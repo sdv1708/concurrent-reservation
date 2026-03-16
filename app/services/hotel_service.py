@@ -1,9 +1,11 @@
+from app.schemas.room import RoomSchema
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
 from fastapi import HTTPException
 from datetime import date, timedelta
 from app.models.hotel import Hotel
 from app.models.room import Room
+from app.models.enums import BookingStatusEnum
 from app.models.booking import Booking
 from app.models.inventory import Inventory
 from app.models.user import User
@@ -15,6 +17,8 @@ from app.database import get_by_id, get_all, create_record, update_record, delet
 
 def _check_hotel_ownership(hotel: Hotel, current_user: User):
     """Reusable ownership guard — call this before any admin write on a hotel."""
+    if not hotel: 
+      raise HTTPException(404, "Hotel not found")
     if hotel.owner_id != current_user.id:
         raise HTTPException(403, "You do not own this hotel")
 
@@ -215,7 +219,8 @@ def get_hotel_info(db: Session, hotel_id: int) -> HotelInfoOut:
     if not hotel or not hotel.active: 
       raise HTTPException(status_code=404, detail="Hotel not found or not active")
     rooms = get_all(db, Room, hotel_id=hotel_id)
-    return HotelInfoOut(hotel=hotel, rooms=rooms)
+    return HotelInfoOut(hotel=HotelSchema.model_validate(hotel),
+                        rooms=[RoomSchema.model_validate(r) for r in rooms])
     
 
 def search_hotels(db: Session, data: HotelSearchRequest) -> PageResponse:
@@ -242,4 +247,42 @@ def search_hotels(db: Session, data: HotelSearchRequest) -> PageResponse:
     The result should be a PageResponse[HotelPriceOut].
     How do you count total elements for pagination without fetching all rows?
     """
-    pass
+    inventory_subquery = (
+        select(Inventory.hotel_id, func.min(Inventory.price).label("min_price"))
+        .where(
+            Inventory.date >= data.check_in_date,
+            Inventory.date <= data.check_out_date,
+            Inventory.closed == False,
+            (Inventory.total_count - Inventory.book_count - Inventory.reserved_count) >= data.rooms_count
+        )
+        .group_by(Inventory.hotel_id)
+        .having(func.count(Inventory.hotel_id) >= (data.check_out_date - data.check_in_date).days)
+        .subquery()
+    )
+
+    query = (
+        select(Hotel, inventory_subquery.c.min_price)
+        .join(inventory_subquery, Hotel.id == inventory_subquery.c.hotel_id)
+        .where(Hotel.active == True)
+    )
+    
+    total = db.execute(select(func.count()).select_from(query.subquery())).scalar()
+
+    results = db.execute(
+      query.offset((data.page - 1) * data.size).limit(data.size)
+    ).all()
+
+    content = [
+      HotelPriceOut(**HotelSchema.model_validate(hotel).model_dump(),
+      min_price=min_price,
+    ) for hotel, min_price in results]
+
+
+    return PageResponse(
+      content=content,
+      total_elements=total,
+      page=data.page,
+      size=data.size,
+    ) 
+    
+    

@@ -8,6 +8,8 @@ from app.schemas.booking import HotelSearchRequest
 from app.security.guards import get_current_user
 from app.services import hotel_service
 
+# Public browse — uses get_current_user (not require_hotel_manager)
+# Any authenticated user can browse hotels
 router = APIRouter(prefix="/hotels", tags=["Hotel Browse"])
 
 
@@ -17,16 +19,22 @@ def search_hotels(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: Call hotel_service.search_hotels(db, data)
-    #
-    # Query pattern (all in one SQLAlchemy query):
-    #   GROUP BY hotel_id on Inventory table
-    #   WHERE city=data.city, date BETWEEN ..., closed=False,
-    #         (total_count - book_count - reserved_count) >= data.rooms_count
-    #   HAVING COUNT(*) >= (end_date - start_date).days + 1  ← availability on ALL days
-    #   SELECT MIN(price) per hotel for display
-    #   Then paginate with offset/limit
-    pass
+    """
+    GET /hotels/search
+
+    Searches for hotels with availability across all requested dates.
+    The request body (`HotelSearchRequest`) contains: city, start_date, end_date,
+    rooms_count, page, and size.
+
+    The service does the heavy SQL work — the router just passes the request through
+    and returns a PageResponse[HotelPriceOut].
+
+    Note on the response type: PageResponse is a generic, and the router declares
+    exactly what type each item in `content` should be (HotelPriceOut).
+
+    Pattern: call service → return result.
+    """
+    return hotel_service.search_hotels(db, data)
 
 
 @router.get("/{hotel_id}/info", response_model=HotelInfoOut)
@@ -35,6 +43,15 @@ def hotel_info(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: Call hotel_service.get_hotel_info(db, hotel_id)
-    # Hint: fetch Hotel → fetch its rooms → return HotelInfoOut(hotel=..., rooms=[...])
-    pass
+    """
+    GET /hotels/{hotel_id}/info
+
+    Returns full hotel details (hotel + list of rooms) for the public detail view.
+    This route is accessible by any authenticated user, not just managers.
+    The service verifies the hotel is active before returning.
+
+    response_model=HotelInfoOut — what two fields does that schema contain?
+
+    Pattern: call service → return result.
+    """
+    return hotel_service.get_hotel_info(db, hotel_id)
