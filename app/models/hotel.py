@@ -1,5 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import ARRAY, TEXT
+from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.database import Base
@@ -11,8 +10,8 @@ class Hotel(Base):
     id              = Column(BigInteger, primary_key=True, autoincrement=True)
     name            = Column(String, nullable=False)
     city            = Column(String, nullable=False)
-    photos          = Column(ARRAY(TEXT), nullable=True)
-    amenities       = Column(ARRAY(TEXT), nullable=True)
+    photos          = Column(JSON, nullable=True)
+    amenities       = Column(JSON, nullable=True)
     active          = Column(Boolean, nullable=False, default=False)  # must be activated before guests can book
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc),

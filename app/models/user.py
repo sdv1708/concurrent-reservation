@@ -21,7 +21,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     name          = Column(String, nullable=True)
     date_of_birth = Column(Date, nullable=True)
-    gender        = Column(PgEnum(GenderEnum, name="genderenum"), nullable=True)
+    gender        = Column(PgEnum(GenderEnum, name="genderenum", native_enum=False), nullable=True)
 
     # Relationships — navigate from user.roles, user.hotels, etc.
     roles    = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")

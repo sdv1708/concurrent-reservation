@@ -126,6 +126,6 @@ def delete_guest(db: Session, guest_id: int, current_user: User) -> None:
     guest = get_by_id(db, Guest, guest_id)
     if not guest: 
         raise HTTPException(404, f"Guest not found: {guest_id}")
-    if guest.id != current_user.id: 
+    if guest.user_id != current_user.id: 
         raise HTTPException(403, "Only your own guests can be deleted")
     delete_record(db, guest)

@@ -17,13 +17,13 @@ def create_app() -> FastAPI:
     from app.routers import auth
     app.include_router(auth.router)
 
-    # TODO Phase 5:  from app.routers import users;           app.include_router(users.router)
-    # TODO Phase 6:  from app.routers import hotels_admin;    app.include_router(hotels_admin.router)
-    # TODO Phase 7:  from app.routers import rooms_admin;     app.include_router(rooms_admin.router)
-    # TODO Phase 8:  from app.routers import inventory_admin; app.include_router(inventory_admin.router)
-    # TODO Phase 9:  from app.routers import hotels_browse;   app.include_router(hotels_browse.router)
-    # TODO Phase 11: from app.routers import bookings;        app.include_router(bookings.router)
-    # TODO Phase 12: from app.routers import webhooks;        app.include_router(webhooks.router)
+    from app.routers import users;           app.include_router(users.router)           # Phase 5
+    from app.routers import hotels_admin;    app.include_router(hotels_admin.router)    # Phase 6
+    from app.routers import rooms_admin;     app.include_router(rooms_admin.router)     # Phase 7
+    from app.routers import inventory_admin; app.include_router(inventory_admin.router) # Phase 8
+    from app.routers import hotels_browse;   app.include_router(hotels_browse.router)   # Phase 9
+    from app.routers import bookings;        app.include_router(bookings.router)        # Phase 11
+    from app.routers import webhooks;        app.include_router(webhooks.router)        # Phase 12
 
     # ── Exception handlers — add after Phase 13 ─────────────────────────────
     # TODO Phase 13:

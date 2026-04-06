@@ -7,7 +7,6 @@ from app.models.user import User
 from app.schemas.inventory import UpdateInventoryRequest
 from app.database import get_by_id, get_all
 
-
 def get_room_inventory(db: Session, room_id: int, current_user: User):
     """
     Return all inventory rows for a room — only if this user owns the parent hotel.
@@ -73,7 +72,7 @@ def bulk_update(db: Session, room_id: int, data: UpdateInventoryRequest, current
       if data.closed is not None: 
         row.closed = data.closed
       if data.surge_factor is not None: 
-        row.surge_factor = data.surge_factor() 
+        row.surge_factor = data.surge_factor 
     
     db.commit()
     return rows

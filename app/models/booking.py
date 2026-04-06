@@ -28,7 +28,7 @@ class Booking(Base):
     check_in_date      = Column(Date,       nullable=False)
     check_out_date     = Column(Date,       nullable=False)
     booking_status     = Column(
-        PgEnum(BookingStatusEnum, name="bookingstatusenum"),
+        PgEnum(BookingStatusEnum, name="bookingstatusenum", native_enum=False),
         nullable=False,
         default=BookingStatusEnum.RESERVED,
     )

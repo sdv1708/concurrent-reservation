@@ -15,17 +15,32 @@ async def capture_payment(
     db: Session = Depends(get_db),
 ):
     """
-    REFERENCE — Stripe webhook endpoint.
+    POST /webhook/payment — Phase 12. Called by Stripe after a successful payment.
 
-    CRITICAL: Must read raw bytes (not request.json()).
-    Stripe signs the raw payload — parsing it first would break signature verification.
+    This endpoint has NO user authentication — it's called by Stripe's servers, not a user.
+    Instead, it verifies the request using a webhook secret (cryptographic signature).
 
-    After successful payment:
-      - Set booking.status = CONFIRMED
-      - SELECT FOR UPDATE inventory rows
-      - For each row: reserved_count = max(0, reserved_count - rooms_count)
-                      book_count += rooms_count
-      - COMMIT
+    === REFERENCE: Steps 1–3 are already implemented below. Your job is Step 4. ===
+
+    Step 1: Read the raw request body.
+      - MUST use `await request.body()` — NEVER `await request.json()`
+      - Why? Stripe signs the raw bytes. If you parse JSON first, the bytes change
+        and the signature check will fail.
+
+    Step 2: Verify Stripe's signature.
+      - stripe.Webhook.construct_event() validates the signature using your webhook secret
+      - If tampered → raises SignatureVerificationError → we return 400
+
+    Step 3: Check the event type.
+      - We only care about "checkout.session.completed"
+      - All other event types are safely ignored (Stripe expects a 2xx response)
+
+    Step 4: YOUR TURN — call booking_service.confirm_booking(db, session_id).
+      - session_id is already extracted for you below
+      - The service will: find the booking, lock inventory with SELECT FOR UPDATE,
+        move reserved_count → book_count, and set status = CONFIRMED
+
+    Note: this endpoint returns 204 (no body). Stripe just needs to know we received it.
     """
     # Step 1: Read raw bytes — NEVER do request.json() here
     payload = await request.body()
@@ -41,12 +56,7 @@ async def capture_payment(
     # Step 3: Handle the event type we care about
     if event["type"] == "checkout.session.completed":
         session_id = event["data"]["object"]["id"]
-        # TODO: Call booking_service.confirm_booking(db, session_id)
-        # Hint:
-        #   booking = db.query(Booking).filter(Booking.payment_session_id == session_id).first()
-        #   SELECT FOR UPDATE inventory rows → move reserved_count to book_count
-        #   Set booking.status = CONFIRMED
-        #   COMMIT
-        pass
+        # Step 4: Confirm the booking — converts reserved_count → book_count, sets status = CONFIRMED
+        booking_service.confirm_booking(db, session_id)
 
     # Return 204 (no content) for all other event types — Stripe expects a 2xx

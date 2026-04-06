@@ -44,7 +44,7 @@ def update_profile(
     Pattern: call user_service.update_profile(...) with the right arguments, return the result.
     What three things does this endpoint have available to pass to the service?
     """
-    return user_service.update_guest()
+    return user_service.update_profile(db, current_user, data)
 
 
 @router.get("/myBookings")
@@ -76,7 +76,7 @@ def list_guests(
 
     Pattern: call user_service.get_guests(...) and return the result.
     """
-    pass
+    return user_service.get_guests(db, current_user)
 
 
 @router.post("/guests", response_model=GuestSchema, status_code=201)
@@ -94,7 +94,7 @@ def add_guest(
 
     Pattern: call user_service.add_guest(...) and return the result.
     """
-    pass
+    return user_service.add_guest(db, current_user, data)
 
 
 @router.put("/guests/{guest_id}", response_model=GuestSchema)
@@ -114,7 +114,7 @@ def update_guest(
     Your job: call user_service.update_guest(...) with all four needed arguments.
     What are they? Look at the service function signature.
     """
-    pass
+    return user_service.update_guest(db, guest_id, current_user, data)
 
 
 @router.delete("/guests/{guest_id}", status_code=204)
@@ -132,4 +132,5 @@ def delete_guest(
     After calling the service, what should you explicitly return?
     (Hint: what does HTTP 204 mean about the response body?)
     """
-    pass
+    user_service.delete_guest(db, guest_id, current_user)
+    return None

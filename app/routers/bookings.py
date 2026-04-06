@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.database import get_db
+from app.database import get_db, get_by_id
 from app.models.user import User
-from app.schemas.booking import BookingOut, BookingStatusResponse, BookingPaymentInitResponse
+from app.models.booking import Booking
+from app.schemas.booking import BookingRequest, BookingOut, BookingStatusResponse, BookingPaymentInitResponse
 from app.schemas.guest import GuestSchema
 from app.security.guards import get_current_user
 from app.services import booking_service
@@ -13,47 +14,46 @@ router = APIRouter(prefix="/bookings", tags=["Bookings"])
 
 @router.post("/init", response_model=BookingOut, status_code=201)
 def init_booking(
-    data,  # TODO: import BookingRequest from app.schemas.booking and use it here
+    data: BookingRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: Call booking_service.init_booking(db, data, current_user)
-    #
-    # CRITICAL — booking init must use SELECT FOR UPDATE:
-    #   rows = db.execute(
-    #       select(Inventory)
-    #       .where(
-    #           Inventory.room_id == data.room_id,
-    #           Inventory.date.between(data.check_in_date, data.check_out_date),
-    #           Inventory.closed == False,
-    #           (Inventory.total_count - Inventory.book_count - Inventory.reserved_count) >= data.rooms_count,
-    #       )
-    #       .with_for_update()    ← pessimistic lock — prevents double booking
-    #   ).scalars().all()
-    #
-    # If len(rows) != days → raise 400 "Room not available"
-    # For each row: reserved_count += rooms_count
-    # price = calculate_total_price(rows) * rooms_count
-    # INSERT Booking(status=RESERVED, amount=price)
-    # COMMIT
-    pass
+    """
+    POST /bookings/init — status 201 Created.
+
+    Initiates a new booking. The service handles all the complex logic:
+      - Validating hotel and room existence
+      - SELECT FOR UPDATE to prevent double-booking
+      - Incrementing reserved_count on inventory rows
+      - Dynamic price calculation across all dates
+
+    The router just needs to pass `data`, `db`, and `current_user` to the service.
+
+    Notice that BookingRequest is now properly imported — the original file had a TODO
+    to add this import. Make sure it's in the imports above.
+    """
+    return booking_service.init_booking(db, data, current_user)
 
 
 @router.post("/{booking_id}/addGuests", response_model=BookingOut)
 def add_guests(
     booking_id: int,
-    guest_ids: List[int],   # list of existing guest IDs to attach to this booking
+    guest_ids: List[int],
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: Call booking_service.add_guests(db, booking_id, guest_ids, current_user)
-    # State rules:
-    #   - Check has_booking_expired(booking) → raise 400 if expired
-    #   - Only allowed when booking.status == RESERVED → raise 400 otherwise
-    #   - Check booking.user_id == current_user.id → raise 403 otherwise
-    #   - Attach guests: booking.guests = [fetched Guest objects]
-    #   - Set booking.status = GUESTS_ADDED
-    pass
+    """
+    POST /bookings/{booking_id}/addGuests
+
+    Attaches a list of saved guest IDs to a booking.
+    `guest_ids` is a JSON array body (e.g. [1, 2, 3]).
+
+    The service enforces: ownership → expiry → status (must be RESERVED).
+    If any check fails, the service raises the appropriate HTTPException.
+
+    Pattern: call service → return result.
+    """
+    return booking_service.add_guests(db, booking_id, guest_ids, current_user)
 
 
 @router.post("/{booking_id}/payments", response_model=BookingPaymentInitResponse)
@@ -62,16 +62,17 @@ def initiate_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: Call booking_service.initiate_payment(db, booking_id, current_user)
-    # State rules:
-    #   - Check has_booking_expired(booking) → raise 400 if expired
-    #   - Allowed from RESERVED or GUESTS_ADDED → raise 400 otherwise
-    #   - Check ownership → raise 403 otherwise
-    #   - Create Stripe checkout session (see architecture §12)
-    #   - Store session.id in booking.payment_session_id
-    #   - Set booking.status = PAYMENTS_PENDING
-    #   - Return { payment_url: session.url }
-    pass
+    """
+    POST /bookings/{booking_id}/payments
+
+    Creates a Stripe Checkout session and returns the payment URL.
+    The service handles all Stripe API calls and state transitions.
+
+    response_model=BookingPaymentInitResponse — what field does that schema have?
+    The service returns a URL string — how do you wrap that into the response schema?
+    """
+    payment_url = booking_service.initiate_payment(db, booking_id, current_user)
+    return BookingPaymentInitResponse(payment_url=payment_url)
 
 
 @router.post("/{booking_id}/cancel", response_model=BookingOut)
@@ -80,14 +81,15 @@ def cancel_booking(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: Call booking_service.cancel_booking(db, booking_id, current_user)
-    # State rules:
-    #   - Only allowed when booking.status == CONFIRMED → raise 400 otherwise
-    #   - Check ownership → raise 403 otherwise
-    #   - SELECT FOR UPDATE inventory rows → decrement book_count
-    #   - Issue Stripe refund: stripe.Refund.create(payment_intent=session.payment_intent)
-    #   - Set booking.status = CANCELLED
-    pass
+    """
+    POST /bookings/{booking_id}/cancel
+
+    Cancels a confirmed booking: releases inventory and issues a Stripe refund.
+    The service enforces: ownership → status must be CONFIRMED.
+
+    Pattern: call service → return result.
+    """
+    return booking_service.cancel_booking(db, booking_id, current_user)
 
 
 @router.get("/{booking_id}/status", response_model=BookingStatusResponse)
@@ -96,6 +98,25 @@ def booking_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # TODO: Fetch booking, check ownership, return BookingStatusResponse(booking_status=booking.booking_status)
-    # Note: no expiry check needed here — status check is always allowed
-    pass
+    """
+    GET /bookings/{booking_id}/status
+
+    Returns just the booking_status field of a booking.
+    This is a lightweight polling endpoint — used by the frontend to check
+    whether a payment has been confirmed by the webhook.
+
+    Steps:
+      1. Fetch the booking by ID → 404 if not found
+      2. Check ownership → 403 if not theirs
+      3. Return BookingStatusResponse(booking_status=booking.booking_status)
+
+    Notice: no expiry check here — the user can always look up the status.
+    This is thin enough that you could implement it directly in the router
+    OR delegate it to the service. Either approach is fine.
+    """
+    booking = get_by_id(db, Booking, booking_id)
+    if not booking:
+        raise HTTPException(404, f"Booking not found: {booking_id}")
+    if booking.user_id != current_user.id:
+        raise HTTPException(403, "You do not own this booking")
+    return BookingStatusResponse(booking_status=booking.booking_status)
