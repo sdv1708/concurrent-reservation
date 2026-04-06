@@ -1,12 +1,3 @@
-# ── Reference service — every other service follows this structure ─────────────
-#
-# Pattern:
-#   1. Takes db: Session as first arg (always)
-#   2. Takes a schema (input data) and/or an ORM user object (for auth context)
-#   3. Raises HTTPException for validation failures
-#   4. Calls CRUD helpers from database.py — no raw SQL here
-#   5. Returns ORM instances or Pydantic models (caller decides which)
-
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.models.user import User, UserRole
@@ -19,6 +10,18 @@ from app.database import create_record
 
 
 def sign_up(db: Session, data: SignUpRequest) -> UserOut:
+    """Registers a new user and assigns a default GUEST role.
+
+    Args:
+        db (Session): The database session.
+        data (SignUpRequest): Registration credentials.
+
+    Returns:
+        UserOut: The newly created user details.
+
+    Raises:
+        HTTPException: If the email is already registered (409).
+    """
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
         raise HTTPException(409, "Email already registered")
@@ -31,13 +34,24 @@ def sign_up(db: Session, data: SignUpRequest) -> UserOut:
         date_of_birth=data.date_of_birth,
         gender=data.gender,
     )
-    # Assign default GUEST role — roles live in user_roles table, not on User
+    # Assign default GUEST role
     create_record(db, UserRole, user_id=user.id, role=RoleEnum.GUEST.value)
     return UserOut.model_validate(user)
 
 
 def login(db: Session, data: LoginRequest) -> tuple[str, str]:
-    """Returns (access_token, refresh_token). Router sets refresh in cookie."""
+    """Authenticates a user and generates access and refresh tokens.
+
+    Args:
+        db (Session): The database session.
+        data (LoginRequest): The login credentials.
+
+    Returns:
+        tuple[str, str]: A tuple containing (access_token, refresh_token).
+
+    Raises:
+        HTTPException: If the credentials are invalid (401).
+    """
     user = db.query(User).filter(User.email == data.email).first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(401, "Invalid email or password")
@@ -49,7 +63,18 @@ def login(db: Session, data: LoginRequest) -> tuple[str, str]:
 
 
 def refresh_access(db: Session, refresh_token: str) -> str:
-    """Decode the refresh token, load the user, return a fresh access token."""
+    """Generates a new access token using a valid refresh token.
+
+    Args:
+        db (Session): The database session.
+        refresh_token (str): The refresh token issued during login.
+
+    Returns:
+        str: A newly generated access token.
+
+    Raises:
+        HTTPException: If the token is invalid or the user does not exist (401).
+    """
     try:
         payload = decode_token(refresh_token)
     except ValueError:

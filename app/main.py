@@ -13,20 +13,20 @@ def create_app() -> FastAPI:
         docs_url="/swagger-ui.html",
     )
 
-    # ── Routers — uncomment each as you complete its phase ──────────────────
+    # ── Routers ─────────────────────────────────────────────────────────────────
     from app.routers import auth
     app.include_router(auth.router)
 
-    from app.routers import users;           app.include_router(users.router)           # Phase 5
-    from app.routers import hotels_admin;    app.include_router(hotels_admin.router)    # Phase 6
-    from app.routers import rooms_admin;     app.include_router(rooms_admin.router)     # Phase 7
-    from app.routers import inventory_admin; app.include_router(inventory_admin.router) # Phase 8
-    from app.routers import hotels_browse;   app.include_router(hotels_browse.router)   # Phase 9
-    from app.routers import bookings;        app.include_router(bookings.router)        # Phase 11
-    from app.routers import webhooks;        app.include_router(webhooks.router)        # Phase 12
+    from app.routers import users;           app.include_router(users.router)
+    from app.routers import hotels_admin;    app.include_router(hotels_admin.router)
+    from app.routers import rooms_admin;     app.include_router(rooms_admin.router)
+    from app.routers import inventory_admin; app.include_router(inventory_admin.router)
+    from app.routers import hotels_browse;   app.include_router(hotels_browse.router)
+    from app.routers import bookings;        app.include_router(bookings.router)
+    from app.routers import webhooks;        app.include_router(webhooks.router)
 
-    # ── Exception handlers — add after Phase 13 ─────────────────────────────
-    # TODO Phase 13:
+    # ── Exception handlers ──────────────────────────────────────────────────
+    # Note: Global exception handlers can be configured here.
     #   from app.exceptions.handlers import (not_found_handler, unauthorized_handler,
     #                                         access_denied_handler, generic_handler)
     #   from app.exceptions.custom import (ResourceNotFoundError, UnauthorizedError, AccessDeniedError)

@@ -21,14 +21,16 @@ def create_room(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hotel_manager),
 ):
-    """
-    POST /admin/hotels/{hotel_id}/rooms — status 201 Created.
+    """Creates a new room type for a specific hotel.
+    
+    Args:
+        hotel_id (int): The ID of the hotel.
+        data (RoomSchema): The room details.
+        db (Session): The database session.
+        current_user (User): The authenticated manager.
 
-    The service create_room() handles everything including the conditional
-    inventory initialization (only if the hotel is already active).
-    The router just calls the service and returns the result.
-
-    Pattern: call service → return result.
+    Returns:
+        RoomSchema: The created room record.
     """
     return room_service.create_room(db, hotel_id, data, current_user)
 
@@ -39,11 +41,15 @@ def list_rooms(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hotel_manager),
 ):
-    """
-    GET /admin/hotels/{hotel_id}/rooms — list all rooms for this hotel.
+    """Lists all room types available at a specific hotel.
+    
+    Args:
+        hotel_id (int): The ID of the hotel.
+        db (Session): The database session.
+        current_user (User): The authenticated manager.
 
-    Ownership is verified in the service layer.
-    Pattern: call service → return result.
+    Returns:
+        list[RoomSchema]: A list of rooms associated with the hotel.
     """
     return room_service.get_rooms(db, hotel_id, current_user)
 
@@ -55,13 +61,16 @@ def get_room(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hotel_manager),
 ):
-    """
-    GET /admin/hotels/{hotel_id}/rooms/{room_id}
+    """Retrieves details of a specific room type at a hotel.
+    
+    Args:
+        hotel_id (int): The ID of the hotel.
+        room_id (int): The ID of the room.
+        db (Session): The database session.
+        current_user (User): The authenticated manager.
 
-    Both hotel_id and room_id come from the URL path.
-    The service verifies ownership via the hotel, not directly the room.
-
-    Pattern: call service → return result.
+    Returns:
+        RoomSchema: The room details.
     """
     return room_service.get_room(db, hotel_id, room_id, current_user)
 
@@ -74,13 +83,17 @@ def update_room(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hotel_manager),
 ):
-    """
-    PUT /admin/hotels/{hotel_id}/rooms/{room_id} — full update of room details.
+    """Updates the details of a specific room type.
+    
+    Args:
+        hotel_id (int): The ID of the hotel.
+        room_id (int): The ID of the room.
+        data (RoomSchema): The updated room data.
+        db (Session): The database session.
+        current_user (User): The authenticated manager.
 
-    The service handles ownership check and the actual update.
-    How many arguments does room_service.update_room() take? (Look at its signature)
-
-    Pattern: call service → return result.
+    Returns:
+        RoomSchema: The updated room record.
     """
     return room_service.update_room(db, hotel_id, room_id, data, current_user)
 
@@ -92,14 +105,13 @@ def delete_room(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hotel_manager),
 ):
-    """
-    DELETE /admin/hotels/{hotel_id}/rooms/{room_id} — status 204 No Content.
-
-    Deleting the room also deletes all its inventory rows automatically
-    (cascade defined on the Room model's `inventories` relationship).
-    The router doesn't need to handle this — the service and ORM take care of it.
-
-    After calling the service, what do you return for a 204?
+    """Deletes a specific room type and cascades the deletion to its inventory.
+    
+    Args:
+        hotel_id (int): The ID of the hotel.
+        room_id (int): The ID of the room.
+        db (Session): The database session.
+        current_user (User): The authenticated manager.
     """
     room_service.delete_room(db, hotel_id, room_id, current_user)
     return None

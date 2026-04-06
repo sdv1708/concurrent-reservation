@@ -8,32 +8,30 @@ from app.database import get_all, update_record, get_by_id, create_record, delet
 
 
 def get_profile(current_user: User):
-    """
-    Return the current user's profile.
+    """Retrieves the authenticated user's profile.
 
-    You already have the user object — FastAPI injected it via Depends(get_current_user).
-    The router's response_model (UserOut) will handle the ORM → schema conversion
-    automatically, so you just need to return the raw ORM object here.
+    Args:
+        current_user (User): The authenticated user instance.
 
-    No database query needed — why not?
+    Returns:
+        User: The user instance.
     """
     return current_user
 
 
 def update_profile(db: Session, current_user: User, data: ProfileUpdateRequest) -> User:
-    """
-    Apply a partial update to the current user's profile (PATCH semantics).
+    """Applies a partial update to the authenticated user's profile.
 
-    Key concept — PATCH vs PUT:
-      - PUT replaces the whole object (requires every field)
-      - PATCH only replaces fields that were actually sent
-      Think about how model_dump() can help you send ONLY the non-null fields.
+    Args:
+        db (Session): The database session.
+        current_user (User): The authenticated user making the update.
+        data (ProfileUpdateRequest): The fields to partially update.
 
-    Which database helper is the right one here?
-    Look at the Quick Reference table in PLAYBOOK.md — you want the one that
-    updates an existing instance, commits, and refreshes it.
+    Returns:
+        User: The updated user record.
 
-    What does **kwargs unpacking do when you pass a dict to it?
+    Raises:
+        HTTPException: If the user context is invalid (401).
     """
     updated_record = None
     if get_profile(current_user): 
@@ -44,22 +42,30 @@ def update_profile(db: Session, current_user: User, data: ProfileUpdateRequest) 
     return updated_record
 
 def get_my_bookings(db: Session, current_user: User):
-    """
-    Return all bookings that belong to the currently logged-in user.
+    """Retrieves all bookings belonging to the authenticated user.
 
-    Think about: what column on the Booking model links a booking to a user?
-    Which database helper returns all rows matching a filter condition?
-    How do you pass that filter so only THIS user's bookings come back?
+    Args:
+        db (Session): The database session.
+        current_user (User): The authenticated user.
+
+    Returns:
+        list[Booking]: A list of the user's bookings.
     """
     return get_all(db, Booking, user_id=current_user.id)
     
 
 def get_guests(db: Session, current_user: User):
-    """
-    Return all guest profiles saved by the currently logged-in user.
+    """Retrieves all guest profiles saved by the authenticated user.
 
-    Same pattern as get_my_bookings — which column on Guest connects it to a user?
-    Use the same helper, just with a different model and filter.
+    Args:
+        db (Session): The database session.
+        current_user (User): The authenticated user.
+
+    Returns:
+        list[Guest]: A list of the user's saved guests.
+
+    Raises:
+        HTTPException: If the user context is invalid (401).
     """
     guest = None
     if get_profile(current_user): 
@@ -71,15 +77,18 @@ def get_guests(db: Session, current_user: User):
 
 
 def add_guest(db: Session, current_user: User, data) -> Guest:
-    """
-    Create a new Guest record and associate it with the current user.
+    """Creates a new guest profile associated with the authenticated user.
 
-    Important: the user_id on the new guest must be set to current_user.id
-    so that ownership is established at creation time.
-    Never trust the client to send user_id — always set it server-side.
+    Args:
+        db (Session): The database session.
+        current_user (User): The authenticated user.
+        data (GuestSchema): The guest's details.
 
-    Which helper inserts a new record, commits, and returns the new object?
-    What fields does the Guest model need? (Check app/models/guest.py)
+    Returns:
+        Guest: The newly created guest record.
+
+    Raises:
+        HTTPException: If the user context is invalid (401).
     """
     guest = None
     if get_profile(current_user): 
@@ -92,17 +101,19 @@ def add_guest(db: Session, current_user: User, data) -> Guest:
 
 
 def update_guest(db: Session, guest_id: int, current_user: User, data) -> Guest:
-    """
-    Update a guest's details — but only if the guest belongs to this user.
+    """Updates an existing guest record after verifying ownership.
 
-    Steps to think through:
-      1. Fetch the guest by its primary key. What do you do if it doesn't exist?
-      2. Verify ownership: does guest.user_id match current_user.id?
-         If not → what HTTP status code means "you don't have permission"?
-      3. Apply the update using PATCH semantics.
-         Should you allow the client to change the guest's `id` field? How do you exclude it?
+    Args:
+        db (Session): The database session.
+        guest_id (int): The ID of the guest to update.
+        current_user (User): The authenticated user.
+        data (GuestSchema): The updated guest details.
 
-    Look at the ownership check pattern in Phase 5 of PLAYBOOK.md for reference.
+    Returns:
+        Guest: The updated guest record.
+
+    Raises:
+        HTTPException: If the guest is not found (404) or not owned by the user (403).
     """
     guest = get_by_id(db, Guest, guest_id)
     if not guest: 
@@ -113,15 +124,15 @@ def update_guest(db: Session, guest_id: int, current_user: User, data) -> Guest:
     
     
 def delete_guest(db: Session, guest_id: int, current_user: User) -> None:
-    """
-    Delete a guest — but only if the guest belongs to this user.
+    """Deletes a guest record after verifying ownership.
 
-    Steps to think through:
-      1. Fetch the guest by ID → what happens if it's not found?
-      2. Check ownership → same pattern as update_guest above
-      3. Which helper deletes a record and commits?
+    Args:
+        db (Session): The database session.
+        guest_id (int): The ID of the guest to delete.
+        current_user (User): The authenticated user.
 
-    Return type is None — what does that mean for what you return (or don't)?
+    Raises:
+        HTTPException: If the guest is not found (404) or not owned by the user (403).
     """
     guest = get_by_id(db, Guest, guest_id)
     if not guest: 

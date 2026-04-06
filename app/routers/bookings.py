@@ -18,19 +18,18 @@ def init_booking(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    POST /bookings/init — status 201 Created.
+    """Initiates a new booking.
+    
+    Validates hotel and room existence, locks inventory to prevent double-booking, 
+    and applies a temporary reservation hold based on dynamic pricing.
+    
+    Args:
+        data (BookingRequest): The booking details (hotel, room, dates, count).
+        db (Session): The database session.
+        current_user (User): The authenticated user making the booking.
 
-    Initiates a new booking. The service handles all the complex logic:
-      - Validating hotel and room existence
-      - SELECT FOR UPDATE to prevent double-booking
-      - Incrementing reserved_count on inventory rows
-      - Dynamic price calculation across all dates
-
-    The router just needs to pass `data`, `db`, and `current_user` to the service.
-
-    Notice that BookingRequest is now properly imported — the original file had a TODO
-    to add this import. Make sure it's in the imports above.
+    Returns:
+        BookingOut: The newly created booking in RESERVED status.
     """
     return booking_service.init_booking(db, data, current_user)
 
@@ -42,16 +41,16 @@ def add_guests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    POST /bookings/{booking_id}/addGuests
+    """Attaches a list of saved guests to an existing booking.
+    
+    Args:
+        booking_id (int): The ID of the primary booking.
+        guest_ids (List[int]): A list of guest IDs to attach.
+        db (Session): The database session.
+        current_user (User): The authenticated user making the request.
 
-    Attaches a list of saved guest IDs to a booking.
-    `guest_ids` is a JSON array body (e.g. [1, 2, 3]).
-
-    The service enforces: ownership → expiry → status (must be RESERVED).
-    If any check fails, the service raises the appropriate HTTPException.
-
-    Pattern: call service → return result.
+    Returns:
+        BookingOut: The updated booking reflecting the attached guests.
     """
     return booking_service.add_guests(db, booking_id, guest_ids, current_user)
 
@@ -62,14 +61,15 @@ def initiate_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    POST /bookings/{booking_id}/payments
+    """Creates a Stripe Checkout session for the booking.
+    
+    Args:
+        booking_id (int): The ID of the booking to pay for.
+        db (Session): The database session.
+        current_user (User): The authenticated user initiating payment.
 
-    Creates a Stripe Checkout session and returns the payment URL.
-    The service handles all Stripe API calls and state transitions.
-
-    response_model=BookingPaymentInitResponse — what field does that schema have?
-    The service returns a URL string — how do you wrap that into the response schema?
+    Returns:
+        BookingPaymentInitResponse: Contains the Stripe checkout URL.
     """
     payment_url = booking_service.initiate_payment(db, booking_id, current_user)
     return BookingPaymentInitResponse(payment_url=payment_url)
@@ -81,13 +81,17 @@ def cancel_booking(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    POST /bookings/{booking_id}/cancel
+    """Cancels a confirmed booking.
+    
+    Releases the locked inventory and issues a refund via Stripe APIs.
+    
+    Args:
+        booking_id (int): The ID of the booking to cancel.
+        db (Session): The database session.
+        current_user (User): The authenticated user requesting cancellation.
 
-    Cancels a confirmed booking: releases inventory and issues a Stripe refund.
-    The service enforces: ownership → status must be CONFIRMED.
-
-    Pattern: call service → return result.
+    Returns:
+        BookingOut: The cancelled booking details.
     """
     return booking_service.cancel_booking(db, booking_id, current_user)
 
@@ -98,21 +102,18 @@ def booking_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    GET /bookings/{booking_id}/status
+    """Retrieves the current status of a user's booking.
+    
+    This lightweight polling endpoint checks whether a payment has been 
+    successfully captured and finalized by the webhook.
+    
+    Args:
+        booking_id (int): The ID of the booking.
+        db (Session): The database session.
+        current_user (User): The authenticated user checking the status.
 
-    Returns just the booking_status field of a booking.
-    This is a lightweight polling endpoint — used by the frontend to check
-    whether a payment has been confirmed by the webhook.
-
-    Steps:
-      1. Fetch the booking by ID → 404 if not found
-      2. Check ownership → 403 if not theirs
-      3. Return BookingStatusResponse(booking_status=booking.booking_status)
-
-    Notice: no expiry check here — the user can always look up the status.
-    This is thin enough that you could implement it directly in the router
-    OR delegate it to the service. Either approach is fine.
+    Returns:
+        BookingStatusResponse: Information containing the booking's status.
     """
     booking = get_by_id(db, Booking, booking_id)
     if not booking:

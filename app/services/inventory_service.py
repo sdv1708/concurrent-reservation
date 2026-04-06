@@ -8,16 +8,18 @@ from app.schemas.inventory import UpdateInventoryRequest
 from app.database import get_by_id, get_all
 
 def get_room_inventory(db: Session, room_id: int, current_user: User):
-    """
-    Return all inventory rows for a room — only if this user owns the parent hotel.
+    """Retrieves all inventory records for a specific room.
 
-    The ownership chain here is: Room → Hotel → owner_id.
-    You need to traverse two levels to verify access.
+    Args:
+        db (Session): The database session.
+        room_id (int): The ID of the room.
+        current_user (User): The authenticated manager.
 
-    Think about: how do you get from a `room` object to its hotel's owner?
-    (Hint: the Room model has a `hotel` relationship)
+    Returns:
+        list[Inventory]: A list of inventory rows.
 
-    After verifying ownership, return all inventory rows for this room.
+    Raises:
+        HTTPException: If the room is not found (404) or not owned by the user (403).
     """
     room = get_by_id(db, Room, room_id)
     if not room:
@@ -28,31 +30,22 @@ def get_room_inventory(db: Session, room_id: int, current_user: User):
 
 
 def bulk_update(db: Session, room_id: int, data: UpdateInventoryRequest, current_user: User):
-    """
-    Update closed/surge_factor for all inventory rows in a date range.
+    """Bulk updates inventory availability or pricing modifiers over a date range.
 
-    This function introduces an important concept: SELECT FOR UPDATE (pessimistic locking).
-    Why is it needed here? Imagine two admins updating the same inventory rows at the same time.
-    Without a lock, one update could silently overwrite the other.
+    Applies pessimistic locking (SELECT FOR UPDATE) to ensure data integrity during 
+    concurrent updates.
 
-    The pattern to use:
-      - Use db.execute(...) with a select() query (not get_all)
-      - Add .with_for_update() to the query — this locks the matching rows
-      - Call .scalars().all() to get the list of Inventory objects
-      - Rows stay locked until the transaction is committed
+    Args:
+        db (Session): The database session.
+        room_id (int): The ID of the room.
+        data (UpdateInventoryRequest): Contains the start date, end date, and fields to update.
+        current_user (User): The authenticated manager.
 
-    Steps to think through:
-      1. Verify the room exists (404) and you own the hotel (403)
-      2. Build the SELECT FOR UPDATE query filtering by room_id and date range
-      3. Loop over the returned rows:
-           - Only update `closed` if data.closed is not None
-           - Only update `surge_factor` if data.surge_factor is not None
-           (Why check for None? Because this is a partial update — not every field may be sent)
-      4. Commit once at the end — NOT inside the loop
-      5. Return the updated rows
+    Returns:
+        list[Inventory]: The updated inventory rows.
 
-    Look at the `select` import at the top — it's already imported.
-    The date range filter uses: Inventory.date.between(data.start_date, data.end_date)
+    Raises:
+        HTTPException: If the room is not found (404) or not owned by the user (403).
     """
 
     room = get_by_id(db, Room, room_id)
@@ -66,7 +59,7 @@ def bulk_update(db: Session, room_id: int, data: UpdateInventoryRequest, current
             .where(
                 Inventory.room_id == room_id,
                 Inventory.date.between(data.start_date, data.end_date),
-            )).with_for_update()).scalars().all() # pessimistic locking 
+            )).with_for_update()).scalars().all()
     
     for row in rows: 
       if data.closed is not None: 

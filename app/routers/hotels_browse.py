@@ -19,20 +19,15 @@ def search_hotels(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    GET /hotels/search
+    """Searches for active hotels with availability for the given dates.
+    
+    Args:
+        data (HotelSearchRequest): The search criteria including city, dates, and pagination.
+        db (Session): The database session.
+        current_user (User): The authenticated user making the search.
 
-    Searches for hotels with availability across all requested dates.
-    The request body (`HotelSearchRequest`) contains: city, start_date, end_date,
-    rooms_count, page, and size.
-
-    The service does the heavy SQL work — the router just passes the request through
-    and returns a PageResponse[HotelPriceOut].
-
-    Note on the response type: PageResponse is a generic, and the router declares
-    exactly what type each item in `content` should be (HotelPriceOut).
-
-    Pattern: call service → return result.
+    Returns:
+        PageResponse[HotelPriceOut]: A paginated list of available hotels and their prices.
     """
     return hotel_service.search_hotels(db, data)
 
@@ -43,15 +38,14 @@ def hotel_info(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    GET /hotels/{hotel_id}/info
+    """Retrieves full details of a specific active hotel.
+    
+    Args:
+        hotel_id (int): The ID of the hotel.
+        db (Session): The database session.
+        current_user (User): The authenticated user requesting the info.
 
-    Returns full hotel details (hotel + list of rooms) for the public detail view.
-    This route is accessible by any authenticated user, not just managers.
-    The service verifies the hotel is active before returning.
-
-    response_model=HotelInfoOut — what two fields does that schema contain?
-
-    Pattern: call service → return result.
+    Returns:
+        HotelInfoOut: The hotel's details and associated rooms.
     """
     return hotel_service.get_hotel_info(db, hotel_id)

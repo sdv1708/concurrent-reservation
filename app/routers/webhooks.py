@@ -14,38 +14,24 @@ async def capture_payment(
     stripe_signature: str = Header(alias="Stripe-Signature"),
     db: Session = Depends(get_db),
 ):
+    """Handles Stripe webhook events.
+    
+    This endpoint is called asynchronously by Stripe. It reads the raw request 
+    body, verifies the cryptographic signature to ensure authenticity, and processes 
+    the `checkout.session.completed` event to finalize bookings.
+    
+    Args:
+        request (Request): The raw incoming HTTP request (required for signature verification).
+        stripe_signature (str): The Stripe-Signature header.
+        db (Session): The database session.
+
+    Raises:
+        HTTPException: If the signature verification fails (400).
     """
-    POST /webhook/payment — Phase 12. Called by Stripe after a successful payment.
-
-    This endpoint has NO user authentication — it's called by Stripe's servers, not a user.
-    Instead, it verifies the request using a webhook secret (cryptographic signature).
-
-    === REFERENCE: Steps 1–3 are already implemented below. Your job is Step 4. ===
-
-    Step 1: Read the raw request body.
-      - MUST use `await request.body()` — NEVER `await request.json()`
-      - Why? Stripe signs the raw bytes. If you parse JSON first, the bytes change
-        and the signature check will fail.
-
-    Step 2: Verify Stripe's signature.
-      - stripe.Webhook.construct_event() validates the signature using your webhook secret
-      - If tampered → raises SignatureVerificationError → we return 400
-
-    Step 3: Check the event type.
-      - We only care about "checkout.session.completed"
-      - All other event types are safely ignored (Stripe expects a 2xx response)
-
-    Step 4: YOUR TURN — call booking_service.confirm_booking(db, session_id).
-      - session_id is already extracted for you below
-      - The service will: find the booking, lock inventory with SELECT FOR UPDATE,
-        move reserved_count → book_count, and set status = CONFIRMED
-
-    Note: this endpoint returns 204 (no body). Stripe just needs to know we received it.
-    """
-    # Step 1: Read raw bytes — NEVER do request.json() here
+    # Read raw bytes — required for Stripe signature verification
     payload = await request.body()
 
-    # Step 2: Verify Stripe signature — raises 400 if tampered
+    # Verify Stripe signature
     try:
         event = stripe.Webhook.construct_event(
             payload, stripe_signature, settings.stripe_webhook_secret
@@ -53,10 +39,10 @@ async def capture_payment(
     except stripe.error.SignatureVerificationError:
         raise HTTPException(400, "Invalid Stripe signature")
 
-    # Step 3: Handle the event type we care about
+    # Handle successful payment events
     if event["type"] == "checkout.session.completed":
         session_id = event["data"]["object"]["id"]
-        # Step 4: Confirm the booking — converts reserved_count → book_count, sets status = CONFIRMED
+        # Confirm the booking via the session ID
         booking_service.confirm_booking(db, session_id)
 
     # Return 204 (no content) for all other event types — Stripe expects a 2xx

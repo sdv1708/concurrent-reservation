@@ -16,7 +16,15 @@ from app.database import get_by_id, get_all, create_record, update_record, delet
 
 
 def _check_hotel_ownership(hotel: Hotel, current_user: User):
-    """Reusable ownership guard — call this before any admin write on a hotel."""
+    """Validates that the authenticated user owns the specified hotel.
+
+    Args:
+        hotel (Hotel): The hotel record to check.
+        current_user (User): The authenticated user making the request.
+
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
+    """
     if not hotel: 
       raise HTTPException(404, "Hotel not found")
     if hotel.owner_id != current_user.id:
@@ -24,14 +32,17 @@ def _check_hotel_ownership(hotel: Hotel, current_user: User):
 
 
 def create_hotel(db: Session, data: HotelSchema, current_user: User) -> Hotel:
-    """
-    REFERENCE — Study this pattern before implementing the functions below.
+    """Creates a new hotel profile.
+    
+    Hotels are created in an inactive state by default and must be explicitly activated.
 
-    Key things to notice:
-    - Every field from the schema is passed explicitly — no shortcuts
-    - active=False is hardcoded: a hotel always starts inactive (manager must activate it later)
-    - owner_id is set to current_user.id server-side, never trusted from the client
-    - create_record handles the INSERT, commit, and refresh in one call
+    Args:
+        db (Session): The database session.
+        data (HotelSchema): The hotel details.
+        current_user (User): The authenticated manager creating the hotel.
+
+    Returns:
+        Hotel: The newly created hotel record.
     """
     return create_record(
         db, Hotel,
@@ -49,28 +60,31 @@ def create_hotel(db: Session, data: HotelSchema, current_user: User) -> Hotel:
 
 
 def get_my_hotels(db: Session, current_user: User):
-    """
-    Return all hotels owned by this user.
+    """Retrieves all hotels owned by the authenticated manager.
 
-    Think about: which column on Hotel identifies the owner?
-    Which helper returns ALL rows that match a single filter condition?
-    You don't need a 404 check here — returning an empty list is valid.
+    Args:
+        db (Session): The database session.
+        current_user (User): The authenticated manager.
+
+    Returns:
+        list[Hotel]: A list of the manager's hotels.
     """
     return get_all(db, Hotel, owner_id=current_user.id)
 
 
 def get_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
-    """
-    Fetch a single hotel by ID, verifying it belongs to this user.
+    """Retrieves a specific hotel after verifying ownership.
 
-    Step by step:
-      1. Fetch the hotel by primary key. What happens if it doesn't exist?
-      2. Call the ownership guard that's already defined above in this file.
-         The guard raises 403 automatically if ownership fails.
-      3. Return the hotel.
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel.
+        current_user (User): The authenticated manager.
 
-    Notice the private helper `_check_hotel_ownership` at the top of this file —
-    use it instead of repeating the ownership check manually.
+    Returns:
+        Hotel: The hotel record.
+
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     _check_hotel_ownership(hotel, current_user)
@@ -78,16 +92,19 @@ def get_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
 
 
 def update_hotel(db: Session, hotel_id: int, data: HotelSchema, current_user: User) -> Hotel:
-    """
-    Update a hotel's details (full replacement — this is a PUT, not PATCH).
+    """Performs a full update of a hotel's details.
 
-    Steps:
-      1. Fetch the hotel — 404 if not found
-      2. Check ownership
-      3. Apply the update
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel to update.
+        data (HotelSchema): The updated hotel properties.
+        current_user (User): The authenticated manager.
 
-    When updating, should you allow the client to change the hotel's `id` field?
-    Think about which fields to exclude from the update payload.
+    Returns:
+        Hotel: The updated hotel record.
+
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel: 
@@ -97,14 +114,18 @@ def update_hotel(db: Session, hotel_id: int, data: HotelSchema, current_user: Us
 
 
 def activate_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
-    """
-    Set a hotel's `active` flag to True.
+    """Activates a hotel, making it accessible to the public.
 
-    This is a deliberate single-field update — only `active` changes.
-    After activation, newly created rooms will automatically generate inventory rows.
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel to activate.
+        current_user (User): The authenticated manager.
 
-    Steps: fetch → check ownership → update just the one field.
-    What happens if you try to activate a hotel you don't own?
+    Returns:
+        Hotel: The activated hotel record.
+
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel: 
@@ -115,14 +136,15 @@ def activate_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
 
 
 def delete_hotel(db: Session, hotel_id: int, current_user: User) -> None:
-    """
-    Delete a hotel and all its children (rooms, inventory).
+    """Deletes a hotel and cascades the deletion to its associated rooms and inventory.
 
-    SQLAlchemy cascade rules on the Hotel model will handle the children automatically —
-    you don't need to manually delete rooms or inventory.
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel to delete.
+        current_user (User): The authenticated manager.
 
-    Steps: fetch → check ownership → delete.
-    What should you return from a function with return type None?
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel: 
@@ -132,14 +154,18 @@ def delete_hotel(db: Session, hotel_id: int, current_user: User) -> None:
 
 
 def get_hotel_bookings(db: Session, hotel_id: int, current_user: User):
-    """
-    Return all bookings for a hotel — but only if this user owns it.
+    """Retrieves all bookings across all rooms for a specific hotel.
 
-    The manager needs to verify the hotel exists AND that they own it
-    before they can see its bookings.
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel.
+        current_user (User): The authenticated manager.
 
-    Steps: fetch hotel → check ownership → fetch all bookings filtered by hotel_id.
-    Which model links bookings back to a hotel? Which field?
+    Returns:
+        list[Booking]: A list of bookings at the hotel.
+
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel: 
@@ -150,25 +176,23 @@ def get_hotel_bookings(db: Session, hotel_id: int, current_user: User):
 
 def get_report(db: Session, hotel_id: int, current_user: User,
                start_date: date = None, end_date: date = None) -> HotelReportOut:
-    """
-    Generate a revenue report for a hotel over a date range.
+    """Generates an aggregate revenue report for a specific hotel.
 
-    Defaults (when not provided by caller):
-      - end_date = today
-      - start_date = 30 days before end_date
+    Calculates the total number of confirmed bookings and revenue metrics
+    within the specified date range.
 
-    Think about what query you need to write:
-      - Filter Booking by hotel_id
-      - Only include CONFIRMED bookings (why not RESERVED or CANCELLED?)
-      - Filter by check_in_date between start_date and end_date
-      - You need three aggregates: count of bookings, sum of amounts, average of amounts
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel.
+        current_user (User): The authenticated manager.
+        start_date (date, optional): Reporting period start date (defaults to 30 days prior).
+        end_date (date, optional): Reporting period end date (defaults to today).
 
-    SQLAlchemy provides func.count(), func.sum(), func.avg() for aggregations.
-    Look at the imports at the top of this file — `func` is already imported.
+    Returns:
+        HotelReportOut: The aggregated revenue statistics.
 
-    Return a HotelReportOut schema instance with the computed values.
-    What do you return if there are zero confirmed bookings in the range?
-    select(func.count()).select_from(users)
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel: 
@@ -197,23 +221,18 @@ def get_report(db: Session, hotel_id: int, current_user: User,
     
     
 
-# ─── Phase 9 — Public hotel browse ──────────────────────────────────────────
-
-
 def get_hotel_info(db: Session, hotel_id: int) -> HotelInfoOut:
-    """
-    Return full hotel info (hotel + rooms) for the public browse view.
+    """Retrieves full, public details of a hotel, including its active rooms.
 
-    Important: this endpoint is PUBLIC (no ownership check) but should only
-    return ACTIVE hotels. What should you raise if the hotel is inactive?
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel.
 
-    Steps:
-      1. Fetch the hotel. If not found OR not active → 404
-      2. Fetch all rooms belonging to this hotel
-      3. Build and return a HotelInfoOut — it takes `hotel` (a HotelSchema)
-         and `rooms` (a list of RoomSchema). How do you convert ORM objects to schemas?
+    Returns:
+        HotelInfoOut: The hotel and room details.
 
-    Notice there is no `current_user` parameter here — why?
+    Raises:
+        HTTPException: If the hotel is not found or is currently inactive (404).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel or not hotel.active: 
@@ -224,28 +243,17 @@ def get_hotel_info(db: Session, hotel_id: int) -> HotelInfoOut:
     
 
 def search_hotels(db: Session, data: HotelSearchRequest) -> PageResponse:
-    """
-    Search for hotels with availability for the requested dates and room count.
+    """Searches for active hotels with availability corresponding to the requested dates.
 
-    This is the most complex query in the app — read this carefully.
+    Queries inventory iteratively to ensure full contiguous availability across 
+    the date range and provides dynamic minimum pricing metadata.
 
-    What the query must do:
-      1. Look at the Inventory table (not Hotel directly) per city + date range
-      2. For each inventory row, check that:
-           - It's not closed
-           - Available rooms = total_count - book_count - reserved_count >= rooms_count
-      3. A hotel is only a match if it has qualifying rows for EVERY day in the range
-         (use HAVING COUNT(*) >= number_of_days to enforce this)
-      4. Select the minimum price per hotel for display (use func.min)
-      5. Join back to Hotel, filter active=True
-      6. Paginate with offset/limit based on data.page and data.size
+    Args:
+        db (Session): The database session.
+        data (HotelSearchRequest): The search query parameters (dates, rooms padding, pagination).
 
-    Concepts to look up:
-      - SQLAlchemy subquery() + join()
-      - func.min(), func.count(), group_by(), having()
-
-    The result should be a PageResponse[HotelPriceOut].
-    How do you count total elements for pagination without fetching all rows?
+    Returns:
+        PageResponse: A paginated page containing `HotelPriceOut` objects.
     """
     inventory_subquery = (
         select(Inventory.hotel_id, func.min(Inventory.price).label("min_price"))

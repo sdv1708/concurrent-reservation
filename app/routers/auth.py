@@ -1,11 +1,3 @@
-# ── Reference router — use this file as the template for every router you write ──
-#
-# Pattern:
-#   1. Create an APIRouter with prefix and tags
-#   2. Routes are THIN: extract request data, call the service, return the schema
-#   3. All business logic lives in the service — NOT in the router
-#   4. Use Depends(get_db) for DB session, Depends(get_current_user) for auth
-
 from fastapi import APIRouter, Depends, Response, Cookie
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -19,20 +11,32 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 @router.post("/signup", response_model=UserOut, status_code=201)
 def signup(data: SignUpRequest, db: Session = Depends(get_db)):
-    """
-    Register a new user.
-    Checks email uniqueness → hashes password → creates User + GUEST role.
-    Returns the created user (without password_hash).
+    """Registers a new user.
+    
+    Args:
+        data (SignUpRequest): The user registration details.
+        db (Session): The database session.
+
+    Returns:
+        UserOut: The created user profile.
     """
     return auth_service.sign_up(db, data)
 
 
 @router.post("/login", response_model=LoginResponse)
 def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    """
-    Authenticate user.
-    Returns access token in response body.
-    Sets refresh token in an httpOnly cookie (invisible to JavaScript).
+    """Authenticates a user and issues JWT tokens.
+    
+    Returns the access token in the response body, and sets the refresh 
+    token in an HTTP-only cookie.
+    
+    Args:
+        data (LoginRequest): The login credentials.
+        response (Response): The FastAPI response object for setting cookies.
+        db (Session): The database session.
+        
+    Returns:
+        LoginResponse: Contains the access token.
     """
     access, refresh = auth_service.login(db, data)
     response.set_cookie(
@@ -50,9 +54,14 @@ def refresh(
     refreshToken: Optional[str] = Cookie(default=None),
     db: Session = Depends(get_db),
 ):
-    """
-    Use the refresh cookie to mint a new access token.
-    Client calls this when their 10-minute access token expires.
+    """Issues a new access token using a valid refresh token cookie.
+    
+    Args:
+        refreshToken (Optional[str]): The refresh token from the HTTP-only cookie.
+        db (Session): The database session.
+        
+    Returns:
+        LoginResponse: Contains the new access token.
     """
     if not refreshToken:
         from fastapi import HTTPException
