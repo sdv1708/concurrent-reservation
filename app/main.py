@@ -14,19 +14,21 @@ def create_app() -> FastAPI:
     )
 
     # ── Routers ─────────────────────────────────────────────────────────────────
-    from app.routers import auth
-    app.include_router(auth.router)
+    from app.routers import auth, users, hotels_admin, rooms_admin, inventory_admin, hotels_browse, bookings, webhooks
 
-    from app.routers import users;           app.include_router(users.router)
-    from app.routers import hotels_admin;    app.include_router(hotels_admin.router)
-    from app.routers import rooms_admin;     app.include_router(rooms_admin.router)
-    from app.routers import inventory_admin; app.include_router(inventory_admin.router)
-    from app.routers import hotels_browse;   app.include_router(hotels_browse.router)
-    from app.routers import bookings;        app.include_router(bookings.router)
-    from app.routers import webhooks;        app.include_router(webhooks.router)
+    app.include_router(auth.router)
+    app.include_router(users.router)
+    app.include_router(hotels_admin.router)
+    app.include_router(rooms_admin.router)
+    app.include_router(inventory_admin.router)
+    app.include_router(hotels_browse.router)
+    app.include_router(bookings.router)
+    app.include_router(webhooks.router)
 
     # ── Exception handlers ──────────────────────────────────────────────────
-    # Note: Global exception handlers can be configured here.
+    # app/exceptions/{custom,handlers}.py implement structured error responses
+    # (ResourceNotFoundError -> 404, etc.) but aren't wired in — routes currently
+    # raise HTTPException directly instead. Uncomment to switch over:
     #   from app.exceptions.handlers import (not_found_handler, unauthorized_handler,
     #                                         access_denied_handler, generic_handler)
     #   from app.exceptions.custom import (ResourceNotFoundError, UnauthorizedError, AccessDeniedError)

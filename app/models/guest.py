@@ -13,5 +13,5 @@ class Guest(Base):
     age     = Column(Integer, nullable=True)
     user_id = Column(BigInteger, ForeignKey("app_user.id"), nullable=False)
 
-    # Each guest belongs to a user — user manages their own guest list
+    # A guest belongs to exactly one user's guest list
     user = relationship("User", back_populates="guests")

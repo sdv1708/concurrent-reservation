@@ -6,7 +6,7 @@ from app.schemas.room import RoomSchema
 from app.security.guards import require_hotel_manager
 from app.services import room_service
 
-# Note: hotel_id is part of the prefix — FastAPI passes it to every route function automatically
+# hotel_id lives in the router prefix, so every route below must declare it as a path param.
 router = APIRouter(
     prefix="/admin/hotels/{hotel_id}/rooms",
     tags=["Room Admin"],
@@ -22,7 +22,7 @@ def create_room(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Creates a new room type for a specific hotel.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         data (RoomSchema): The room details.
@@ -42,7 +42,7 @@ def list_rooms(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Lists all room types available at a specific hotel.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         db (Session): The database session.
@@ -62,7 +62,7 @@ def get_room(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Retrieves details of a specific room type at a hotel.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         room_id (int): The ID of the room.
@@ -84,7 +84,7 @@ def update_room(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Updates the details of a specific room type.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         room_id (int): The ID of the room.
@@ -106,7 +106,7 @@ def delete_room(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Deletes a specific room type and cascades the deletion to its inventory.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         room_id (int): The ID of the room.

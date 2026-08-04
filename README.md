@@ -8,11 +8,11 @@ The Concurrent Reservation project simulates the backend processing of an AirBnB
 
 The primary challenge this system addresses is concurrency—handling simultaneous booking attempts on limited inventory using pessimistic locking strategies.
 
-## The AI-Assisted Engineering Methodology
+## Engineering Notes
 
-This codebase was developed through an AI-assisted engineering methodology, iterating through progressive phases. The process simulated a senior-to-junior handoff: high-level architecture documents and specific test suites served as the ground truth, while AI generation was leveraged to rapidly prototype, refine, and implement the application logic layer by layer. 
+This codebase was built with AI-assisted tooling under human direction: architecture and concurrency decisions (pessimistic locking, the booking state machine, token strategy) were made deliberately, with AI generation used to implement and iterate on that design, and the test suite used to verify correctness at each step.
 
-The transition from granular, tutorial-style instructions to standard, production-ready code documentation reflects the maturation of an AI-assisted pipeline into a professional software artifact.
+The code has since gone through a maintenance pass — parallel agents working across non-overlapping modules (models/schemas, services, routers/security, pricing) — to normalize formatting and rewrite inline comments and docstrings so they explain the *why* behind non-obvious decisions (lock ordering, a Stripe signature-verification quirk, a concurrency invariant) instead of restating the code. No business logic, route contracts, or database schema changed; the full test suite ran after every stage to confirm behavior was preserved.
 
 ## Architectural Patterns and Design Decisions
 

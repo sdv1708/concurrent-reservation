@@ -20,7 +20,7 @@ def list_inventory(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Lists the 365-day inventory for a specific room.
-    
+
     Args:
         room_id (int): The ID of the room.
         db (Session): The database session.
@@ -40,9 +40,9 @@ def update_inventory(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Bulk-updates inventory for a room over a specified date range.
-    
+
     Can apply temporary closures or adjust dynamic pricing (surge factor).
-    
+
     Args:
         room_id (int): The ID of the room.
         data (UpdateInventoryRequest): The update details (date range, closures, surge).

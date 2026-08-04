@@ -10,15 +10,17 @@ from app.database import get_by_id, get_all, create_record, update_record, delet
 
 
 def _init_inventory(db: Session, hotel: Hotel, room: Room) -> None:
-    """
-    REFERENCE — bulk generate 365 inventory rows when a room is created on an active hotel.
+    """Bulk-generates a year of inventory rows for a newly created room.
 
-    Study this before implementing the functions below. Key things to notice:
-      - A list comprehension builds all 365 Inventory objects in memory first
-      - bulk_create() sends them in a single transaction (not 365 round-trips)
-      - Each row copies price and total_count from the room at creation time
-      - city is denormalized (copied from hotel) to make inventory queries faster
-      - All counts start at 0; surge_factor starts at 1; closed starts as False
+    Builds all 365 `Inventory` objects in memory and inserts them in a single
+    transaction via `bulk_create` rather than 365 round-trips. Price and
+    total_count are copied from the room at creation time; city is
+    denormalized from the hotel to keep inventory search queries index-only.
+
+    Args:
+        db (Session): The database session.
+        hotel (Hotel): The parent hotel (must be active).
+        room (Room): The newly created room.
     """
     today = date.today()
     rows = [
@@ -40,12 +42,19 @@ def _init_inventory(db: Session, hotel: Hotel, room: Room) -> None:
 
 
 def create_room(db: Session, hotel_id: int, data: RoomSchema, current_user: User) -> Room:
-    """
-    REFERENCE — Study this before implementing the functions below.
+    """Creates a new room under a hotel owned by the current user.
 
-    The important decision here: inventory rows are only generated if the hotel
-    is ALREADY active. If the hotel is inactive, inventory is created later when
-    the hotel gets activated. Notice the conditional `if hotel.active` pattern.
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the parent hotel.
+        data (RoomSchema): The room details.
+        current_user (User): The authenticated manager creating the room.
+
+    Returns:
+        Room: The newly created room record.
+
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel:
@@ -64,7 +73,7 @@ def create_room(db: Session, hotel_id: int, data: RoomSchema, current_user: User
         capacity=data.capacity,
     )
 
-    # Only init inventory if the hotel is already active
+    # Inactive hotels have no inventory yet — it's generated later on activation.
     if hotel.active:
         _init_inventory(db, hotel, room)
 
@@ -72,15 +81,18 @@ def create_room(db: Session, hotel_id: int, data: RoomSchema, current_user: User
 
 
 def get_rooms(db: Session, hotel_id: int, current_user: User):
-    """
-    Return all rooms for a hotel — only if this user owns the hotel.
+    """Retrieves all rooms for a hotel after verifying ownership.
 
-    Notice the two-step verification:
-      Step 1 — does the hotel even exist? (404 if not)
-      Step 2 — does this user own it? (403 if not)
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel.
+        current_user (User): The authenticated manager.
 
-    Only after both checks pass should you fetch the rooms.
-    Which field on Hotel links to the owner? Which field on Room links to the hotel?
+    Returns:
+        list[Room]: A list of the hotel's rooms.
+
+    Raises:
+        HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel:
@@ -91,18 +103,25 @@ def get_rooms(db: Session, hotel_id: int, current_user: User):
 
 
 def get_room(db: Session, hotel_id: int, room_id: int, current_user: User) -> Room:
-    """
-    Fetch a single room, verifying hotel ownership.
+    """Fetches a single room, verifying it belongs to the hotel and is owned by the user.
 
-    Think about: how do you check ownership using a room object rather than a hotel object?
-    The Room model has a relationship to Hotel — how do you traverse from `room` to its hotel's owner?
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the hotel the room is expected to belong to.
+        room_id (int): The ID of the room.
+        current_user (User): The authenticated manager.
 
-    Hint: look at what `room.hotel` gives you.
+    Returns:
+        Room: The room record.
+
+    Raises:
+        HTTPException: If the room is not found or does not belong to the
+                       given hotel (404), or the hotel is not owned by the user (403).
     """
     room = get_by_id(db, Room, room_id)
     if not room:
         raise HTTPException(404, f"Room not found: {room_id}")
-        
+
     if room.hotel_id != hotel_id:
         raise HTTPException(404, f"Room {room_id} does not belong to hotel {hotel_id}")
 
@@ -112,19 +131,24 @@ def get_room(db: Session, hotel_id: int, room_id: int, current_user: User) -> Ro
 
 
 def update_room(db: Session, hotel_id: int, room_id: int, data: RoomSchema, current_user: User) -> Room:
-    """
-    Update a room's details — only if the requesting user owns the parent hotel.
+    """Performs a full update of a room's details.
 
-    Steps:
-      1. Verify the hotel exists and is owned by current_user
-      2. Verify the room exists
-      3. Apply the update
+    Note that updating base_price or total_count does not retroactively change
+    existing inventory rows — those were fixed at room creation time.
 
-    Should you allow the client to change the room's `id` field via the update?
-    Think about what to exclude from the data dump.
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the parent hotel.
+        room_id (int): The ID of the room to update.
+        data (RoomSchema): The updated room properties.
+        current_user (User): The authenticated manager.
 
-    Note: updating base_price or total_count does NOT retroactively change
-    existing inventory rows — those were set at room creation.
+    Returns:
+        Room: The updated room record.
+
+    Raises:
+        HTTPException: If the hotel is not found (404), not owned by the user (403),
+                       or the room is not found (404).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel:
@@ -136,16 +160,19 @@ def update_room(db: Session, hotel_id: int, room_id: int, data: RoomSchema, curr
         raise HTTPException(404, f"Room not found: {room_id}")
     return update_record(db, room, **data.model_dump(exclude_none=True, exclude={"id"}))
 
+
 def delete_room(db: Session, hotel_id: int, room_id: int, current_user: User) -> None:
-    """
-    Delete a room — only if the requesting user owns the parent hotel.
+    """Deletes a room and, via cascade, its associated inventory rows.
 
-    Something to understand: the Room model has `cascade="all, delete-orphan"`
-    on its `inventories` relationship. What does that mean happens automatically
-    when you delete the room?
+    Args:
+        db (Session): The database session.
+        hotel_id (int): The ID of the parent hotel.
+        room_id (int): The ID of the room to delete.
+        current_user (User): The authenticated manager.
 
-    Steps: verify hotel ownership → fetch room → delete.
-    You do NOT need to manually delete inventory rows — why?
+    Raises:
+        HTTPException: If the hotel is not found (404), not owned by the user (403),
+                       or the room is not found (404).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     if not hotel:

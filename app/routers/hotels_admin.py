@@ -8,7 +8,7 @@ from app.security.guards import require_hotel_manager
 from app.services import hotel_service
 from datetime import date
 
-# Note: dependencies=[Depends(require_hotel_manager)] applies require_hotel_manager 
+# Note: dependencies=[Depends(require_hotel_manager)] applies require_hotel_manager
 # to EVERY route in this router automatically. We still define it in routes to inject the User object.
 router = APIRouter(
     prefix="/admin/hotels",
@@ -24,7 +24,7 @@ def create_hotel(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Creates a new hotel profile.
-    
+
     Args:
         data (HotelSchema): The hotel details.
         db (Session): The database session.
@@ -43,7 +43,7 @@ def list_my_hotels(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Lists all hotels managed by the authenticated user.
-    
+
     Args:
         db (Session): The database session.
         current_user (User): The authenticated manager.
@@ -61,7 +61,7 @@ def get_hotel(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Retrieves details of a specific hotel owned by the manager.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         db (Session): The database session.
@@ -81,7 +81,7 @@ def update_hotel(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Updates the details of a specific hotel.
-    
+
     Args:
         hotel_id (int): The ID of the hotel to update.
         data (HotelSchema): The updated hotel data.
@@ -101,7 +101,7 @@ def delete_hotel(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Deletes a specific hotel and all of its associated data.
-    
+
     Args:
         hotel_id (int): The ID of the hotel to delete.
         db (Session): The database session.
@@ -111,7 +111,6 @@ def delete_hotel(
     return None
 
 
-
 @router.patch("/{hotel_id}/activate", response_model=HotelSchema)
 def activate_hotel(
     hotel_id: int,
@@ -119,7 +118,7 @@ def activate_hotel(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Activates a hotel, making it publically bookable.
-    
+
     Args:
         hotel_id (int): The ID of the hotel to activate.
         db (Session): The database session.
@@ -138,7 +137,7 @@ def hotel_bookings(
     current_user: User = Depends(require_hotel_manager),
 ):
     """Retrieves all bookings made at a specific hotel.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         db (Session): The database session.
@@ -159,7 +158,7 @@ def hotel_report(
     end_date: date = None,
 ):
     """Generates an aggregate revenue report for the hotel.
-    
+
     Args:
         hotel_id (int): The ID of the hotel.
         db (Session): The database session.

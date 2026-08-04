@@ -4,11 +4,8 @@ from app.pricing.strategy import PricingStrategy
 
 class SurgePricing(PricingStrategy):
     """
-    Applies the admin-set surge multiplier when surge_factor > 1.
-    Wraps BasePricing — calls it first, then applies its own adjustment.
-
-    Decorator pattern: each layer calls self._wrapped.calculate() first,
-    then optionally modifies the result before returning it.
+    Applies the admin-set surge multiplier (inventory.surge_factor) when it's > 1.
+    Factor defaults to 1 (no surge); only values above that raise the price here.
     """
     def __init__(self, wrapped: PricingStrategy):
         self._wrapped = wrapped

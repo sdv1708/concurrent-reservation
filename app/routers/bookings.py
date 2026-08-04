@@ -1,13 +1,13 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db, get_by_id
 from app.models.user import User
 from app.models.booking import Booking
 from app.schemas.booking import BookingRequest, BookingOut, BookingStatusResponse, BookingPaymentInitResponse
-from app.schemas.guest import GuestSchema
 from app.security.guards import get_current_user
 from app.services import booking_service
-from typing import List
 
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
 
@@ -19,10 +19,10 @@ def init_booking(
     current_user: User = Depends(get_current_user),
 ):
     """Initiates a new booking.
-    
-    Validates hotel and room existence, locks inventory to prevent double-booking, 
+
+    Validates hotel and room existence, locks inventory to prevent double-booking,
     and applies a temporary reservation hold based on dynamic pricing.
-    
+
     Args:
         data (BookingRequest): The booking details (hotel, room, dates, count).
         db (Session): The database session.
@@ -42,7 +42,7 @@ def add_guests(
     current_user: User = Depends(get_current_user),
 ):
     """Attaches a list of saved guests to an existing booking.
-    
+
     Args:
         booking_id (int): The ID of the primary booking.
         guest_ids (List[int]): A list of guest IDs to attach.
@@ -62,7 +62,7 @@ def initiate_payment(
     current_user: User = Depends(get_current_user),
 ):
     """Creates a Stripe Checkout session for the booking.
-    
+
     Args:
         booking_id (int): The ID of the booking to pay for.
         db (Session): The database session.
@@ -82,9 +82,9 @@ def cancel_booking(
     current_user: User = Depends(get_current_user),
 ):
     """Cancels a confirmed booking.
-    
+
     Releases the locked inventory and issues a refund via Stripe APIs.
-    
+
     Args:
         booking_id (int): The ID of the booking to cancel.
         db (Session): The database session.
@@ -103,10 +103,10 @@ def booking_status(
     current_user: User = Depends(get_current_user),
 ):
     """Retrieves the current status of a user's booking.
-    
-    This lightweight polling endpoint checks whether a payment has been 
+
+    This lightweight polling endpoint checks whether a payment has been
     successfully captured and finalized by the webhook.
-    
+
     Args:
         booking_id (int): The ID of the booking.
         db (Session): The database session.

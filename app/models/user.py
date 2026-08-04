@@ -1,11 +1,9 @@
-# ── Reference model — every other model follows this exact structure ──────────
-#
-# Pattern:
-#   1. Inherit from Base (from app.database)
-#   2. Define __tablename__ as a string (must match what ForeignKeys in OTHER models reference)
+# Reference model — every other model follows this same structure:
+#   1. Inherit from Base (app.database)
+#   2. Define __tablename__ as a string (must match ForeignKeys in other models)
 #   3. Columns are class-level attributes using Column(...)
-#   4. relationship() wires ORM navigation — it does NOT add a DB column
-#   5. cascade="all, delete-orphan" means deleting a User also deletes all its UserRoles
+#   4. relationship() wires ORM navigation only — it adds no DB column
+#   5. cascade="all, delete-orphan" means deleting a User also deletes its UserRoles
 
 from sqlalchemy import Column, BigInteger, String, Date, Enum as PgEnum, ForeignKey
 from sqlalchemy.orm import relationship
@@ -23,7 +21,6 @@ class User(Base):
     date_of_birth = Column(Date, nullable=True)
     gender        = Column(PgEnum(GenderEnum, name="genderenum", native_enum=False), nullable=True)
 
-    # Relationships — navigate from user.roles, user.hotels, etc.
     roles    = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     hotels   = relationship("Hotel",   back_populates="owner")
     bookings = relationship("Booking", back_populates="user")
@@ -32,8 +29,8 @@ class User(Base):
 
 class UserRole(Base):
     """
-    One row per (user, role) pair. This allows multi-role accounts.
-    Roles are NOT stored as a column on app_user — always query user.roles.
+    One row per (user, role) pair — allows multi-role accounts.
+    Roles are not a column on app_user; always query user.roles.
     """
     __tablename__ = "user_roles"
 

@@ -23,7 +23,6 @@ def has_booking_expired(booking: Booking) -> bool:
     Returns:
         bool: True if expired, False otherwise.
     """
-    
     created = booking.created_at
     if created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
@@ -45,7 +44,7 @@ def init_booking(db: Session, data: BookingRequest, current_user: User) -> Booki
         Booking: The created RESERVED booking.
 
     Raises:
-        HTTPException: If the hotel/room is not found (404), or if the room 
+        HTTPException: If the hotel/room is not found (404), or if the room
                        is unavailable for the requested dates (400).
     """
     from app.models.hotel import Hotel
@@ -70,7 +69,7 @@ def init_booking(db: Session, data: BookingRequest, current_user: User) -> Booki
             Inventory.closed == False,
             (Inventory.total_count - Inventory.book_count - Inventory.reserved_count) >= data.rooms_count,
         )
-        .with_for_update()   # ← pessimistic lock
+        .with_for_update()
     ).scalars().all()
 
     if len(inventory_rows) != days:
@@ -112,7 +111,7 @@ def add_guests(db: Session, booking_id: int, guest_ids: list[int], current_user:
         Booking: The updated booking reflecting the attached guests.
 
     Raises:
-        HTTPException: If the booking is not found (404), not owned by the user (403), 
+        HTTPException: If the booking is not found (404), not owned by the user (403),
                        has expired (400), or is not in RESERVED status (400).
     """
     booking = get_by_id(db, Booking, booking_id)
@@ -191,7 +190,7 @@ def cancel_booking(db: Session, booking_id: int, current_user: User) -> Booking:
         Booking: The cancelled booking record.
 
     Raises:
-        HTTPException: If the booking is not found (404), not owned by the user (403), 
+        HTTPException: If the booking is not found (404), not owned by the user (403),
                        or not in a CONFIRMED state (400).
     """
     booking = get_by_id(db, Booking, booking_id)

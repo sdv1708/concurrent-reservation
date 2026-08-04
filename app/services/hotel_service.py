@@ -25,15 +25,15 @@ def _check_hotel_ownership(hotel: Hotel, current_user: User):
     Raises:
         HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
-    if not hotel: 
-      raise HTTPException(404, "Hotel not found")
+    if not hotel:
+        raise HTTPException(404, "Hotel not found")
     if hotel.owner_id != current_user.id:
         raise HTTPException(403, "You do not own this hotel")
 
 
 def create_hotel(db: Session, data: HotelSchema, current_user: User) -> Hotel:
     """Creates a new hotel profile.
-    
+
     Hotels are created in an inactive state by default and must be explicitly activated.
 
     Args:
@@ -88,7 +88,7 @@ def get_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
     """
     hotel = get_by_id(db, Hotel, hotel_id)
     _check_hotel_ownership(hotel, current_user)
-    return hotel  
+    return hotel
 
 
 def update_hotel(db: Session, hotel_id: int, data: HotelSchema, current_user: User) -> Hotel:
@@ -107,8 +107,8 @@ def update_hotel(db: Session, hotel_id: int, data: HotelSchema, current_user: Us
         HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
-    if not hotel: 
-      raise HTTPException(status_code=404, detail="Hotel not found")
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
     return update_record(db, hotel, **data.model_dump(exclude={"id"}))
 
@@ -128,11 +128,10 @@ def activate_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
         HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
-    if not hotel: 
-      raise HTTPException(status_code=404, detail="Hotel not found")
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
     return update_record(db, hotel, active=True)
-
 
 
 def delete_hotel(db: Session, hotel_id: int, current_user: User) -> None:
@@ -147,8 +146,8 @@ def delete_hotel(db: Session, hotel_id: int, current_user: User) -> None:
         HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
-    if not hotel: 
-      raise HTTPException(status_code=404, detail="Hotel not found")
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
     delete_record(db, hotel)
 
@@ -168,8 +167,8 @@ def get_hotel_bookings(db: Session, hotel_id: int, current_user: User):
         HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
-    if not hotel: 
-      raise HTTPException(status_code=404, detail="Hotel not found")
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
     return get_all(db, Booking, hotel_id=hotel_id)
 
@@ -195,15 +194,15 @@ def get_report(db: Session, hotel_id: int, current_user: User,
         HTTPException: If the hotel is not found (404) or not owned by the user (403).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
-    if not hotel: 
-      raise HTTPException(status_code=404, detail="Hotel not found")
+    if not hotel:
+        raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
 
     if start_date is None:
-      start_date = date.today() - timedelta(days=30)
+        start_date = date.today() - timedelta(days=30)
     if end_date is None:
-      end_date = date.today()
-      
+        end_date = date.today()
+
     stmt = select(func.count(Booking.id), func.sum(Booking.amount), func.avg(Booking.amount)).select_from(Booking).where(
         Booking.hotel_id == hotel_id,
         Booking.booking_status == BookingStatusEnum.CONFIRMED,
@@ -217,9 +216,7 @@ def get_report(db: Session, hotel_id: int, current_user: User,
         total_revenue=result[1],
         avg_revenue=result[2],
     )
-    
-    
-    
+
 
 def get_hotel_info(db: Session, hotel_id: int) -> HotelInfoOut:
     """Retrieves full, public details of a hotel, including its active rooms.
@@ -235,18 +232,18 @@ def get_hotel_info(db: Session, hotel_id: int) -> HotelInfoOut:
         HTTPException: If the hotel is not found or is currently inactive (404).
     """
     hotel = get_by_id(db, Hotel, hotel_id)
-    if not hotel or not hotel.active: 
-      raise HTTPException(status_code=404, detail="Hotel not found or not active")
+    if not hotel or not hotel.active:
+        raise HTTPException(status_code=404, detail="Hotel not found or not active")
     rooms = get_all(db, Room, hotel_id=hotel_id)
     return HotelInfoOut(hotel=HotelSchema.model_validate(hotel),
-                        rooms=[RoomSchema.model_validate(r) for r in rooms])
-    
+                         rooms=[RoomSchema.model_validate(r) for r in rooms])
+
 
 def search_hotels(db: Session, data: HotelSearchRequest) -> PageResponse:
     """Searches for active hotels with availability corresponding to the requested dates.
 
-    Queries inventory iteratively to ensure full contiguous availability across 
-    the date range and provides dynamic minimum pricing metadata.
+    Queries inventory to ensure full contiguous availability across the date
+    range and attaches dynamic minimum pricing for each matching hotel.
 
     Args:
         db (Session): The database session.
@@ -273,24 +270,21 @@ def search_hotels(db: Session, data: HotelSearchRequest) -> PageResponse:
         .join(inventory_subquery, Hotel.id == inventory_subquery.c.hotel_id)
         .where(Hotel.active == True)
     )
-    
+
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar()
 
     results = db.execute(
-      query.offset((data.page - 1) * data.size).limit(data.size)
+        query.offset((data.page - 1) * data.size).limit(data.size)
     ).all()
 
     content = [
-      HotelPriceOut(**HotelSchema.model_validate(hotel).model_dump(),
-      min_price=min_price,
-    ) for hotel, min_price in results]
-
+        HotelPriceOut(**HotelSchema.model_validate(hotel).model_dump(), min_price=min_price)
+        for hotel, min_price in results
+    ]
 
     return PageResponse(
-      content=content,
-      total_elements=total,
-      page=data.page,
-      size=data.size,
-    ) 
-    
-    
+        content=content,
+        total_elements=total,
+        page=data.page,
+        size=data.size,
+    )

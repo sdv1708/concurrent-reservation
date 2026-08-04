@@ -34,12 +34,13 @@ def update_profile(db: Session, current_user: User, data: ProfileUpdateRequest) 
         HTTPException: If the user context is invalid (401).
     """
     updated_record = None
-    if get_profile(current_user): 
+    if get_profile(current_user):
         updated_record = update_record(db, current_user, **data.model_dump())
-    else: 
+    else:
         raise HTTPException(401, "User Does not exist")
-    
+
     return updated_record
+
 
 def get_my_bookings(db: Session, current_user: User):
     """Retrieves all bookings belonging to the authenticated user.
@@ -52,7 +53,7 @@ def get_my_bookings(db: Session, current_user: User):
         list[Booking]: A list of the user's bookings.
     """
     return get_all(db, Booking, user_id=current_user.id)
-    
+
 
 def get_guests(db: Session, current_user: User):
     """Retrieves all guest profiles saved by the authenticated user.
@@ -68,11 +69,11 @@ def get_guests(db: Session, current_user: User):
         HTTPException: If the user context is invalid (401).
     """
     guest = None
-    if get_profile(current_user): 
+    if get_profile(current_user):
         guest = get_all(db, Guest, user_id=current_user.id)
-    else: 
+    else:
         raise HTTPException(401, "User Does not exist")
-    
+
     return guest
 
 
@@ -91,12 +92,12 @@ def add_guest(db: Session, current_user: User, data) -> Guest:
         HTTPException: If the user context is invalid (401).
     """
     guest = None
-    if get_profile(current_user): 
+    if get_profile(current_user):
         guest = create_record(db, Guest, user_id=current_user.id, name=data.name,
-                              gender=data.gender, age=data.age)
-    else: 
+                               gender=data.gender, age=data.age)
+    else:
         raise HTTPException(401, "User Does not exist")
-    
+
     return guest
 
 
@@ -116,13 +117,13 @@ def update_guest(db: Session, guest_id: int, current_user: User, data) -> Guest:
         HTTPException: If the guest is not found (404) or not owned by the user (403).
     """
     guest = get_by_id(db, Guest, guest_id)
-    if not guest: 
+    if not guest:
         raise HTTPException(404, f"Guest Not Found: {guest_id}")
-    if guest.user_id != current_user.id: 
-        raise HTTPException(403, f"Only users can update guests")
-    return update_record(db, guest, **data.model_dump(exclude_none=True, exclude={'id'}))
-    
-    
+    if guest.user_id != current_user.id:
+        raise HTTPException(403, "Only users can update guests")
+    return update_record(db, guest, **data.model_dump(exclude_none=True, exclude={"id"}))
+
+
 def delete_guest(db: Session, guest_id: int, current_user: User) -> None:
     """Deletes a guest record after verifying ownership.
 
@@ -135,8 +136,8 @@ def delete_guest(db: Session, guest_id: int, current_user: User) -> None:
         HTTPException: If the guest is not found (404) or not owned by the user (403).
     """
     guest = get_by_id(db, Guest, guest_id)
-    if not guest: 
+    if not guest:
         raise HTTPException(404, f"Guest not found: {guest_id}")
-    if guest.user_id != current_user.id: 
+    if guest.user_id != current_user.id:
         raise HTTPException(403, "Only your own guests can be deleted")
     delete_record(db, guest)

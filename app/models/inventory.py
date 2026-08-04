@@ -25,7 +25,6 @@ class Inventory(Base):
     """
     __tablename__ = "Inventory"
     __table_args__ = (
-        # Ensures no duplicate (hotel, room, date) combinations
         UniqueConstraint("hotel_id", "room_id", "date", name="unique_hotel_room_date"),
     )
 

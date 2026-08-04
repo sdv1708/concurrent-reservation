@@ -1,8 +1,6 @@
-# ── Reference schema file — use this pattern for every schema you write ──────
-#
-# Key rules:
-#   - "Request" schemas: used for incoming data (POST/PUT body), may have required fields
-#   - "Out" schemas: used for outgoing data (responses), always have from_attributes=True
+# Reference schema file — use this pattern for every schema you write:
+#   - "Request" schemas: incoming data (POST/PUT body), may have required fields
+#   - "Out" schemas: outgoing data (responses), always have from_attributes=True
 #   - Optional fields with = None mean the client doesn't have to send them
 #   - from_attributes=True enables: HotelSchema.model_validate(hotel_orm_object)
 
@@ -28,10 +26,9 @@ class HotelSchema(BaseModel):
 
 class HotelPriceOut(BaseModel):
     """
-    Minimal hotel info returned in paginated search results.
-    min_price is computed in the search query — not a column on Hotel.
-    This is a raw query result shape, not an ORM object, so no from_attributes needed
-    for the price field, but keep it for consistency.
+    Minimal hotel info for paginated search results.
+    min_price is computed in the search query, not a column on Hotel — kept
+    from_attributes anyway for consistency with the other schemas.
     """
     id: int
     name: str

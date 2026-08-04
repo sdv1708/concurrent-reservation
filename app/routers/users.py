@@ -6,22 +6,20 @@ from app.schemas.user import UserOut, ProfileUpdateRequest
 from app.schemas.guest import GuestSchema
 from app.security.guards import get_current_user
 from app.services import user_service
-import logging
 
 router = APIRouter(prefix="/users", tags=["Users"])
-logger = logging.getLogger(__name__)
+
 
 @router.get("/profile", response_model=UserOut)
 def get_profile(current_user: User = Depends(get_current_user)):
     """Retrieves the authenticated user's profile.
-    
+
     Args:
         current_user (User): The authenticated user instance.
 
     Returns:
         UserOut: The user's profile data.
     """
-
     return user_service.get_profile(current_user)
 
 
@@ -32,9 +30,9 @@ def update_profile(
     current_user: User = Depends(get_current_user),
 ):
     """Updates the authenticated user's profile.
-    
+
     Performs a partial update, modifying only the fields provided.
-    
+
     Args:
         data (ProfileUpdateRequest): The fields to update.
         db (Session): The database session.
@@ -52,7 +50,7 @@ def my_bookings(
     current_user: User = Depends(get_current_user),
 ):
     """Retrieves all bookings made by the authenticated user.
-    
+
     Args:
         db (Session): The database session.
         current_user (User): The authenticated user.
@@ -69,7 +67,7 @@ def list_guests(
     current_user: User = Depends(get_current_user),
 ):
     """Retrieves all guest profiles saved by the authenticated user.
-    
+
     Args:
         db (Session): The database session.
         current_user (User): The authenticated user.
@@ -87,7 +85,7 @@ def add_guest(
     current_user: User = Depends(get_current_user),
 ):
     """Creates a new guest associated with the authenticated user.
-    
+
     Args:
         data (GuestSchema): The guest's details.
         db (Session): The database session.
@@ -107,7 +105,7 @@ def update_guest(
     current_user: User = Depends(get_current_user),
 ):
     """Updates an existing guest's details.
-    
+
     Args:
         guest_id (int): The ID of the guest to update.
         data (GuestSchema): The updated guest details.
@@ -127,7 +125,7 @@ def delete_guest(
     current_user: User = Depends(get_current_user),
 ):
     """Deletes a guest from the authenticated user's profile.
-    
+
     Args:
         guest_id (int): The ID of the guest to delete.
         db (Session): The database session.

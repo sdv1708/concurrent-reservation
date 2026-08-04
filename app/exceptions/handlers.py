@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from app.exceptions.custom import ResourceNotFoundError, UnauthorizedError, AccessDeniedError
 
 
-# ── Error response shape — consistent across ALL errors in the API ────────────
+# Error response shape is consistent across all errors in the API:
 # { "error": { "code": 404, "message": "Hotel not found with id: 5" } }
 
 async def not_found_handler(request: Request, exc: ResourceNotFoundError):

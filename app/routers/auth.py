@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, Cookie
+from fastapi import APIRouter, Depends, Response, Cookie, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.database import get_db
@@ -12,7 +12,7 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 @router.post("/signup", response_model=UserOut, status_code=201)
 def signup(data: SignUpRequest, db: Session = Depends(get_db)):
     """Registers a new user.
-    
+
     Args:
         data (SignUpRequest): The user registration details.
         db (Session): The database session.
@@ -26,15 +26,15 @@ def signup(data: SignUpRequest, db: Session = Depends(get_db)):
 @router.post("/login", response_model=LoginResponse)
 def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """Authenticates a user and issues JWT tokens.
-    
-    Returns the access token in the response body, and sets the refresh 
+
+    Returns the access token in the response body, and sets the refresh
     token in an HTTP-only cookie.
-    
+
     Args:
         data (LoginRequest): The login credentials.
         response (Response): The FastAPI response object for setting cookies.
         db (Session): The database session.
-        
+
     Returns:
         LoginResponse: Contains the access token.
     """
@@ -55,16 +55,15 @@ def refresh(
     db: Session = Depends(get_db),
 ):
     """Issues a new access token using a valid refresh token cookie.
-    
+
     Args:
         refreshToken (Optional[str]): The refresh token from the HTTP-only cookie.
         db (Session): The database session.
-        
+
     Returns:
         LoginResponse: Contains the new access token.
     """
     if not refreshToken:
-        from fastapi import HTTPException
         raise HTTPException(401, "No refresh token cookie")
     access = auth_service.refresh_access(db, refreshToken)
     return LoginResponse(access_token=access)

@@ -15,11 +15,11 @@ async def capture_payment(
     db: Session = Depends(get_db),
 ):
     """Handles Stripe webhook events.
-    
-    This endpoint is called asynchronously by Stripe. It reads the raw request 
-    body, verifies the cryptographic signature to ensure authenticity, and processes 
+
+    This endpoint is called asynchronously by Stripe. It reads the raw request
+    body, verifies the cryptographic signature to ensure authenticity, and processes
     the `checkout.session.completed` event to finalize bookings.
-    
+
     Args:
         request (Request): The raw incoming HTTP request (required for signature verification).
         stripe_signature (str): The Stripe-Signature header.
@@ -28,10 +28,9 @@ async def capture_payment(
     Raises:
         HTTPException: If the signature verification fails (400).
     """
-    # Read raw bytes — required for Stripe signature verification
+    # Raw bytes, not .json() — signature verification hashes the exact body Stripe sent.
     payload = await request.body()
 
-    # Verify Stripe signature
     try:
         event = stripe.Webhook.construct_event(
             payload, stripe_signature, settings.stripe_webhook_secret
@@ -39,10 +38,8 @@ async def capture_payment(
     except stripe.error.SignatureVerificationError:
         raise HTTPException(400, "Invalid Stripe signature")
 
-    # Handle successful payment events
     if event["type"] == "checkout.session.completed":
         session_id = event["data"]["object"]["id"]
-        # Confirm the booking via the session ID
         booking_service.confirm_booking(db, session_id)
 
-    # Return 204 (no content) for all other event types — Stripe expects a 2xx
+    # Other event types fall through to here — Stripe requires a 2xx or it retries delivery.
