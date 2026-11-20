@@ -12,7 +12,7 @@ class BookingRequest(BaseModel):
     room_id: int
     check_in_date: date
     check_out_date: date
-    rooms_count: int
+    rooms_count: int = Field(ge=1)
 
     @model_validator(mode="after")
     def validate_dates(self):

@@ -106,3 +106,39 @@ def test_repeated_confirm_does_not_book_twice(
     assert counts[_days_from_today(42)] == 0  # the check-out date is not a night
     status = client.get(f"/bookings/{booking_id}/status", headers=guest_headers).json()
     assert status["booking_status"] == "CONFIRMED"
+
+
+def _init_body(active_hotel, **overrides):
+    body = {
+        "hotel_id": active_hotel["hotel"]["id"],
+        "room_id": active_hotel["room"]["id"],
+        "check_in_date": _days_from_today(10),
+        "check_out_date": _days_from_today(12),
+        "rooms_count": 1,
+    }
+    body.update(overrides)
+    return body
+
+
+def test_init_booking_rejects_zero_rooms(client, guest_headers, active_hotel):
+    r = client.post("/bookings/init", headers=guest_headers, json=_init_body(active_hotel, rooms_count=0))
+    assert r.status_code == 422
+
+
+def test_init_booking_rejects_room_type_of_another_hotel(client, guest_headers, manager_headers, active_hotel):
+    other = client.post("/admin/hotels", headers=manager_headers, json={
+        "name": "Other Hotel", "city": "Austin", "photos": [], "amenities": [],
+    }).json()
+    client.patch(f"/admin/hotels/{other['id']}/activate", headers=manager_headers)
+
+    r = client.post("/bookings/init", headers=guest_headers, json=_init_body(active_hotel, hotel_id=other["id"]))
+    assert r.status_code == 404
+
+
+def test_init_booking_rejects_inactive_hotel(client, guest_headers, manager_headers, active_hotel):
+    hotel = active_hotel["hotel"]
+    r = client.put(f"/admin/hotels/{hotel['id']}", headers=manager_headers, json={**hotel, "active": False})
+    assert r.json()["active"] is False
+
+    r = client.post("/bookings/init", headers=guest_headers, json=_init_body(active_hotel))
+    assert r.status_code == 404

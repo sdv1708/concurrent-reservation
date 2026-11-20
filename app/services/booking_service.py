@@ -44,7 +44,8 @@ def init_booking(db: Session, data: BookingRequest, current_user: User) -> Booki
         Booking: The created RESERVED booking.
 
     Raises:
-        HTTPException: If the hotel or room type is not found (404).
+        HTTPException: If the hotel is not found or not active, or the room
+                       type is not found in that hotel (404).
         StayUnavailableError: If the room type does not have enough available
                               rooms on every night of the stay (mapped to 409).
     """
@@ -52,12 +53,12 @@ def init_booking(db: Session, data: BookingRequest, current_user: User) -> Booki
     from app.models.room import Room
 
     hotel = get_by_id(db, Hotel, data.hotel_id)
-    if not hotel:
-        raise HTTPException(404, f"Hotel not found: {data.hotel_id}")
+    if not hotel or not hotel.active:
+        raise HTTPException(404, f"Hotel not found or not active: {data.hotel_id}")
 
     room = get_by_id(db, Room, data.room_id)
-    if not room:
-        raise HTTPException(404, f"Room not found: {data.room_id}")
+    if not room or room.hotel_id != hotel.id:
+        raise HTTPException(404, f"Room {data.room_id} not found in hotel {data.hotel_id}")
 
     stay = Stay(data.check_in_date, data.check_out_date)
     held_nights = stay_inventory.place_hold(db, data.room_id, stay, data.rooms_count)
