@@ -258,3 +258,18 @@ def test_search_filters_by_city(db, owner):
     _make_room_type(db, _make_hotel(db, owner, city=other_city))
 
     assert _search(db, city, stay, 1) == {here.id}
+
+
+# ── Hotel activation ──────────────────────────────────────────────────────────
+
+def test_activation_makes_rows_for_room_type_created_while_inactive(db, owner):
+    from app.services import hotel_service
+
+    hotel = _make_hotel(db, owner, active=False)
+    room = _make_room_type(db, hotel, with_rows=False)
+    assert _row_count(db, room.id) == 0
+
+    hotel_service.activate_hotel(db, hotel.id, owner)
+
+    assert hotel.active is True
+    assert _row_count(db, room.id) == stay_inventory.WINDOW_NIGHTS

@@ -3,15 +3,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, select
 from fastapi import HTTPException
 from datetime import date, timedelta
+import math
 from app.models.hotel import Hotel
 from app.models.room import Room
 from app.models.enums import BookingStatusEnum
 from app.models.booking import Booking
-from app.models.inventory import Inventory
 from app.models.user import User
 from app.schemas.hotel import HotelSchema, HotelPriceOut, HotelInfoOut
 from app.schemas.booking import HotelSearchRequest, HotelReportOut
 from app.schemas.common import PageResponse
+from app.services import stay_inventory
+from app.services.stay_inventory import Stay
 from app.database import get_by_id, get_all, create_record, update_record, delete_record
 
 
@@ -116,6 +118,9 @@ def update_hotel(db: Session, hotel_id: int, data: HotelSchema, current_user: Us
 def activate_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
     """Activates a hotel, making it accessible to the public.
 
+    Also makes the Inventory rows of every room type in the hotel. The
+    activation and the rows commit in one transaction.
+
     Args:
         db (Session): The database session.
         hotel_id (int): The ID of the hotel to activate.
@@ -131,7 +136,12 @@ def activate_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
     if not hotel:
         raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
-    return update_record(db, hotel, active=True)
+    hotel.active = True
+    for room in hotel.rooms:
+        stay_inventory.ensure_rows(db, room.id)
+    db.commit()
+    db.refresh(hotel)
+    return hotel
 
 
 def delete_hotel(db: Session, hotel_id: int, current_user: User) -> None:
@@ -240,35 +250,28 @@ def get_hotel_info(db: Session, hotel_id: int) -> HotelInfoOut:
 
 
 def search_hotels(db: Session, data: HotelSearchRequest) -> PageResponse:
-    """Searches for active hotels with availability corresponding to the requested dates.
+    """Searches for active hotels in a city with availability for a stay.
 
-    Queries inventory to ensure full contiguous availability across the date
-    range and attaches dynamic minimum pricing for each matching hotel.
+    A hotel has availability when at least one of its room types has enough
+    available rooms on every night of the stay. Stay Inventory owns that rule.
+    Each hotel shows the lowest raw Inventory price of its room types that
+    have availability.
 
     Args:
         db (Session): The database session.
-        data (HotelSearchRequest): The search query parameters (dates, rooms padding, pagination).
+        data (HotelSearchRequest): The city, the stay, the room count, and the paging.
 
     Returns:
         PageResponse: A paginated page containing `HotelPriceOut` objects.
     """
-    inventory_subquery = (
-        select(Inventory.hotel_id, func.min(Inventory.price).label("min_price"))
-        .where(
-            Inventory.date >= data.check_in_date,
-            Inventory.date <= data.check_out_date,
-            Inventory.closed == False,
-            (Inventory.total_count - Inventory.book_count - Inventory.reserved_count) >= data.rooms_count
-        )
-        .group_by(Inventory.hotel_id)
-        .having(func.count(Inventory.hotel_id) >= (data.check_out_date - data.check_in_date).days)
-        .subquery()
-    )
+    stay = Stay(data.start_date, data.end_date)
+    available = stay_inventory.available_hotels(data.city, stay, data.rooms_count)
 
     query = (
-        select(Hotel, inventory_subquery.c.min_price)
-        .join(inventory_subquery, Hotel.id == inventory_subquery.c.hotel_id)
-        .where(Hotel.active == True)
+        select(Hotel, available.c.min_price)
+        .join(available, Hotel.id == available.c.hotel_id)
+        .where(Hotel.active == True)  # noqa: E712
+        .order_by(Hotel.id)
     )
 
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar()
@@ -285,6 +288,7 @@ def search_hotels(db: Session, data: HotelSearchRequest) -> PageResponse:
     return PageResponse(
         content=content,
         total_elements=total,
+        total_pages=math.ceil(total / data.size),
         page=data.page,
         size=data.size,
     )
