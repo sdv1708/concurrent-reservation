@@ -1,48 +1,18 @@
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from datetime import date, timedelta
 from app.models.room import Room
 from app.models.hotel import Hotel
-from app.models.inventory import Inventory
 from app.models.user import User
 from app.schemas.room import RoomSchema
-from app.database import get_by_id, get_all, create_record, update_record, delete_record, bulk_create
-
-
-def _init_inventory(db: Session, hotel: Hotel, room: Room) -> None:
-    """Bulk-generates a year of inventory rows for a newly created room.
-
-    Builds all 365 `Inventory` objects in memory and inserts them in a single
-    transaction via `bulk_create` rather than 365 round-trips. Price and
-    total_count are copied from the room at creation time; city is
-    denormalized from the hotel to keep inventory search queries index-only.
-
-    Args:
-        db (Session): The database session.
-        hotel (Hotel): The parent hotel (must be active).
-        room (Room): The newly created room.
-    """
-    today = date.today()
-    rows = [
-        Inventory(
-            hotel_id=hotel.id,
-            room_id=room.id,
-            date=today + timedelta(days=i),
-            price=room.base_price,
-            total_count=room.total_count,
-            surge_factor=1,
-            book_count=0,
-            reserved_count=0,
-            closed=False,
-            city=hotel.city,
-        )
-        for i in range(365)
-    ]
-    bulk_create(db, rows)
+from app.services import stay_inventory
+from app.database import get_by_id, get_all, update_record, delete_record
 
 
 def create_room(db: Session, hotel_id: int, data: RoomSchema, current_user: User) -> Room:
     """Creates a new room under a hotel owned by the current user.
+
+    On an active hotel, it also makes the Inventory rows of the new room type.
+    The room type and its rows commit in one transaction.
 
     Args:
         db (Session): The database session.
@@ -62,8 +32,7 @@ def create_room(db: Session, hotel_id: int, data: RoomSchema, current_user: User
     if hotel.owner_id != current_user.id:
         raise HTTPException(403, "You do not own this hotel")
 
-    room = create_record(
-        db, Room,
+    room = Room(
         hotel_id=hotel_id,
         type=data.type,
         base_price=data.base_price,
@@ -72,11 +41,15 @@ def create_room(db: Session, hotel_id: int, data: RoomSchema, current_user: User
         total_count=data.total_count,
         capacity=data.capacity,
     )
+    db.add(room)
+    db.flush()
 
-    # Inactive hotels have no inventory yet — it's generated later on activation.
+    # An inactive hotel gets its Inventory rows when it is activated.
     if hotel.active:
-        _init_inventory(db, hotel, room)
+        stay_inventory.ensure_rows(db, room.id)
 
+    db.commit()
+    db.refresh(room)
     return room
 
 

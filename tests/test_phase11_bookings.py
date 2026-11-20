@@ -1,53 +1,50 @@
 """
 Phase 11 — Booking tests.
 
-`with_for_update()` is not supported by SQLite, so we patch it on the
-SQLAlchemy Select object so it becomes a no-op in the test environment.
-Stripe calls are always mocked.
+Inventory rows start today, so every stay in these tests uses dates
+relative to `date.today()`. Stripe calls are always mocked.
 """
+import uuid
+from datetime import date, timedelta
 from unittest.mock import patch, MagicMock
 
 
-# ── Helper: patch SELECT FOR UPDATE to be a no-op for SQLite ─────────────────
-# Patching an unbound method — side_effect receives (self, **kw) where self
-# is the actual Select instance. Returning `self` keeps the query chain intact.
-_FOR_UPDATE_PATCH = "sqlalchemy.sql.selectable.Select.with_for_update"
+def _days_from_today(n: int) -> str:
+    return (date.today() + timedelta(days=n)).isoformat()
 
 
 def test_init_booking(client, guest_headers, active_hotel):
-    """Reserve inventory for a future date range — no payment yet."""
+    """Place a hold for a future stay. No payment yet."""
     hotel_id = active_hotel["hotel"]["id"]
     room_id = active_hotel["room"]["id"]
 
-    with patch(_FOR_UPDATE_PATCH, lambda self, **kw: self):
-        r = client.post("/bookings/init", headers=guest_headers, json={
-            "hotel_id": hotel_id,
-            "room_id": room_id,
-            "check_in_date": "2026-08-05",
-            "check_out_date": "2026-08-07",
-            "rooms_count": 1
-        })
+    r = client.post("/bookings/init", headers=guest_headers, json={
+        "hotel_id": hotel_id,
+        "room_id": room_id,
+        "check_in_date": _days_from_today(10),
+        "check_out_date": _days_from_today(12),
+        "rooms_count": 1
+    })
     assert r.status_code == 201
     assert r.json()["booking_status"] == "RESERVED"
 
 
 @patch("app.services.booking_service.stripe.checkout.Session.create")
 def test_initiate_payment(mock_create, client, guest_headers, active_hotel):
-    """After init, calling /bookings/{id}/pay creates a Stripe session."""
+    """After init, calling /bookings/{id}/payments creates a Stripe session."""
     hotel_id = active_hotel["hotel"]["id"]
     room_id = active_hotel["room"]["id"]
 
     mock_create.return_value = MagicMock(id="sess_test_123", url="https://stripe.test.com/pay")
 
     # First init a booking
-    with patch(_FOR_UPDATE_PATCH, lambda self, **kw: self):
-        init_resp = client.post("/bookings/init", headers=guest_headers, json={
-            "hotel_id": hotel_id,
-            "room_id": room_id,
-            "check_in_date": "2026-09-01",
-            "check_out_date": "2026-09-03",
-            "rooms_count": 1
-        })
+    init_resp = client.post("/bookings/init", headers=guest_headers, json={
+        "hotel_id": hotel_id,
+        "room_id": room_id,
+        "check_in_date": _days_from_today(30),
+        "check_out_date": _days_from_today(32),
+        "rooms_count": 1
+    })
     assert init_resp.status_code == 201
     booking_id = init_resp.json()["id"]
 
@@ -55,3 +52,110 @@ def test_initiate_payment(mock_create, client, guest_headers, active_hotel):
     pay_resp = client.post(f"/bookings/{booking_id}/payments", headers=guest_headers)
     assert pay_resp.status_code == 200
     assert "payment_url" in pay_resp.json()
+
+
+def test_init_booking_returns_409_when_stay_unavailable(client, guest_headers, active_hotel):
+    """The room type has 5 rooms. A hold on 6 rooms is a conflict."""
+    r = client.post("/bookings/init", headers=guest_headers, json={
+        "hotel_id": active_hotel["hotel"]["id"],
+        "room_id": active_hotel["room"]["id"],
+        "check_in_date": _days_from_today(10),
+        "check_out_date": _days_from_today(12),
+        "rooms_count": 6
+    })
+    assert r.status_code == 409
+
+
+def _book_counts(client, manager_headers, room_id) -> dict[str, int]:
+    rows = client.get(f"/admin/inventory/rooms/{room_id}", headers=manager_headers).json()
+    return {row["date"]: row["book_count"] for row in rows}
+
+
+@patch("app.routers.webhooks.stripe.Webhook.construct_event")
+@patch("app.services.booking_service.stripe.checkout.Session.create")
+def test_repeated_confirm_does_not_book_twice(
+    mock_create, mock_event, client, guest_headers, manager_headers, active_hotel
+):
+    """A repeated Stripe webhook for the same session adds booked rooms once only."""
+    room_id = active_hotel["room"]["id"]
+    session_id = f"sess_{uuid.uuid4().hex}"
+    mock_create.return_value = MagicMock(id=session_id, url="https://stripe.test.com/pay")
+    mock_event.return_value = {
+        "type": "checkout.session.completed",
+        "data": {"object": {"id": session_id}},
+    }
+
+    init_resp = client.post("/bookings/init", headers=guest_headers, json={
+        "hotel_id": active_hotel["hotel"]["id"],
+        "room_id": room_id,
+        "check_in_date": _days_from_today(40),
+        "check_out_date": _days_from_today(42),
+        "rooms_count": 2
+    })
+    assert init_resp.status_code == 201
+    booking_id = init_resp.json()["id"]
+    assert client.post(f"/bookings/{booking_id}/payments", headers=guest_headers).status_code == 200
+
+    for _ in range(2):
+        r = client.post("/webhook/payment", headers={"Stripe-Signature": "t=1,v1=x"}, content=b"{}")
+        assert r.status_code == 204
+
+    counts = _book_counts(client, manager_headers, room_id)
+    assert counts[_days_from_today(40)] == 2
+    assert counts[_days_from_today(41)] == 2
+    assert counts[_days_from_today(42)] == 0  # the check-out date is not a night
+    status = client.get(f"/bookings/{booking_id}/status", headers=guest_headers).json()
+    assert status["booking_status"] == "CONFIRMED"
+
+
+def _init_body(active_hotel, **overrides):
+    body = {
+        "hotel_id": active_hotel["hotel"]["id"],
+        "room_id": active_hotel["room"]["id"],
+        "check_in_date": _days_from_today(10),
+        "check_out_date": _days_from_today(12),
+        "rooms_count": 1,
+    }
+    body.update(overrides)
+    return body
+
+
+def test_init_booking_rejects_zero_rooms(client, guest_headers, active_hotel):
+    r = client.post("/bookings/init", headers=guest_headers, json=_init_body(active_hotel, rooms_count=0))
+    assert r.status_code == 422
+
+
+def test_init_booking_rejects_room_type_of_another_hotel(client, guest_headers, manager_headers, active_hotel):
+    other = client.post("/admin/hotels", headers=manager_headers, json={
+        "name": "Other Hotel", "city": "Austin", "photos": [], "amenities": [],
+    }).json()
+    client.patch(f"/admin/hotels/{other['id']}/activate", headers=manager_headers)
+
+    r = client.post("/bookings/init", headers=guest_headers, json=_init_body(active_hotel, hotel_id=other["id"]))
+    assert r.status_code == 404
+
+
+def test_init_booking_rejects_inactive_hotel(client, guest_headers, manager_headers, active_hotel):
+    hotel = active_hotel["hotel"]
+    r = client.put(f"/admin/hotels/{hotel['id']}", headers=manager_headers, json={**hotel, "active": False})
+    assert r.json()["active"] is False
+
+    r = client.post("/bookings/init", headers=guest_headers, json=_init_body(active_hotel))
+    assert r.status_code == 404
+
+
+def test_add_guests_checks_guest_ownership(client, guest_headers, manager_headers, active_hotel):
+    booking_id = client.post("/bookings/init", headers=guest_headers,
+                             json=_init_body(active_hotel, check_in_date=_days_from_today(50),
+                                             check_out_date=_days_from_today(51))).json()["id"]
+    own = client.post("/users/guests", headers=guest_headers, json={"name": "Own Guest"}).json()
+    other = client.post("/users/guests", headers=manager_headers, json={"name": "Other Guest"}).json()
+
+    r = client.post(f"/bookings/{booking_id}/addGuests", headers=guest_headers, json=[other["id"]])
+    assert r.status_code == 403
+    r = client.post(f"/bookings/{booking_id}/addGuests", headers=guest_headers, json=[999_999])
+    assert r.status_code == 404
+
+    r = client.post(f"/bookings/{booking_id}/addGuests", headers=guest_headers, json=[own["id"]])
+    assert r.status_code == 200
+    assert [g["id"] for g in r.json()["guests"]] == [own["id"]]
