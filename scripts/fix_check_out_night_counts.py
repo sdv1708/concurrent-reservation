@@ -6,6 +6,8 @@ the row on its check-out date. The old code then kept that extra count:
   * a hold (RESERVED, GUESTS_ADDED, PAYMENTS_PENDING) has +rooms_count in
     reserved_count on its check-out date.
   * a CONFIRMED booking has +rooms_count in book_count on its check-out date.
+  * an EXPIRED booking keeps +rooms_count in reserved_count on its
+    check-out date. The new release frees only the nights of the stay.
   * a CANCELLED booking has no extra count. The old cancel released it.
     If the new code cancelled an old CONFIRMED booking, its extra book_count
     stays. The script reports that row as a mismatch.

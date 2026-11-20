@@ -19,6 +19,7 @@ class BookingStatusEnum(str, Enum):
     PAYMENTS_PENDING = "PAYMENTS_PENDING"   # Stripe checkout session created
     CONFIRMED        = "CONFIRMED"          # payment webhook received — booking is live
     CANCELLED        = "CANCELLED"          # cancelled + refunded
+    EXPIRED          = "EXPIRED"            # payment window ran out — hold released
 
 
 class PaymentStatusEnum(str, Enum):
