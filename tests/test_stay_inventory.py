@@ -287,3 +287,17 @@ def test_put_that_activates_hotel_makes_rows(db, owner):
 
     assert hotel.active is True
     assert _row_count(db, room.id) == stay_inventory.WINDOW_NIGHTS
+
+
+# ── Lock query ────────────────────────────────────────────────────────────────
+
+def test_lock_query_orders_by_date_and_locks_on_postgres():
+    """SQLite drops FOR UPDATE, so check the SQL that Postgres gets.
+
+    This guards the lock and its order. Only the Postgres tests prove how
+    the lock behaves under concurrency.
+    """
+    from sqlalchemy.dialects import postgresql
+
+    sql = str(stay_inventory._lock_statement(1, _day(0), _day(2)).compile(dialect=postgresql.dialect()))
+    assert sql.rstrip().endswith('ORDER BY "Inventory".date FOR UPDATE')
