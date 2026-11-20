@@ -26,7 +26,7 @@ def test_guest_crud(client, guest_headers):
     # List
     r = client.get("/users/guests", headers=guest_headers)
     assert r.status_code == 200
-    assert len(r.json()) == 1
+    assert gid in [g["id"] for g in r.json()]  # other tests may save guests for this user too
 
     # Update
     r = client.put(f"/users/guests/{gid}", headers=guest_headers, json={

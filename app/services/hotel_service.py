@@ -33,6 +33,12 @@ def _check_hotel_ownership(hotel: Hotel, current_user: User):
         raise HTTPException(403, "You do not own this hotel")
 
 
+def _make_inventory_rows(db: Session, hotel: Hotel) -> None:
+    """Makes the Inventory rows of every room type in the hotel. Does not commit."""
+    for room in hotel.rooms:
+        stay_inventory.ensure_rows(db, room.id)
+
+
 def create_hotel(db: Session, data: HotelSchema, current_user: User) -> Hotel:
     """Creates a new hotel profile.
 
@@ -96,6 +102,10 @@ def get_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
 def update_hotel(db: Session, hotel_id: int, data: HotelSchema, current_user: User) -> Hotel:
     """Performs a full update of a hotel's details.
 
+    A None field keeps its value. If the update activates the hotel, it also
+    makes the Inventory rows of every room type, the same as activate_hotel.
+    Changes to city do not reach existing Inventory rows.
+
     Args:
         db (Session): The database session.
         hotel_id (int): The ID of the hotel to update.
@@ -112,7 +122,15 @@ def update_hotel(db: Session, hotel_id: int, data: HotelSchema, current_user: Us
     if not hotel:
         raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
-    return update_record(db, hotel, **data.model_dump(exclude={"id"}))
+    was_active = hotel.active
+    for key, value in data.model_dump(exclude={"id"}).items():
+        if value is not None:
+            setattr(hotel, key, value)
+    if hotel.active and not was_active:
+        _make_inventory_rows(db, hotel)
+    db.commit()
+    db.refresh(hotel)
+    return hotel
 
 
 def activate_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
@@ -137,8 +155,7 @@ def activate_hotel(db: Session, hotel_id: int, current_user: User) -> Hotel:
         raise HTTPException(status_code=404, detail="Hotel not found")
     _check_hotel_ownership(hotel, current_user)
     hotel.active = True
-    for room in hotel.rooms:
-        stay_inventory.ensure_rows(db, room.id)
+    _make_inventory_rows(db, hotel)
     db.commit()
     db.refresh(hotel)
     return hotel

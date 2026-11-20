@@ -273,3 +273,17 @@ def test_activation_makes_rows_for_room_type_created_while_inactive(db, owner):
 
     assert hotel.active is True
     assert _row_count(db, room.id) == stay_inventory.WINDOW_NIGHTS
+
+
+def test_put_that_activates_hotel_makes_rows(db, owner):
+    from app.schemas.hotel import HotelSchema
+    from app.services import hotel_service
+
+    hotel = _make_hotel(db, owner, active=False)
+    room = _make_room_type(db, hotel, with_rows=False)
+
+    data = HotelSchema.model_validate(hotel).model_copy(update={"active": True})
+    hotel_service.update_hotel(db, hotel.id, data, owner)
+
+    assert hotel.active is True
+    assert _row_count(db, room.id) == stay_inventory.WINDOW_NIGHTS
