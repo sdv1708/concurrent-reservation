@@ -26,6 +26,10 @@ def create_app() -> FastAPI:
     app.include_router(webhooks.router)
 
     # ── Exception handlers ──────────────────────────────────────────────────
+    from app.exceptions.handlers import stay_unavailable_handler
+    from app.services.stay_inventory import StayUnavailableError
+    app.add_exception_handler(StayUnavailableError, stay_unavailable_handler)
+
     # app/exceptions/{custom,handlers}.py implement structured error responses
     # (ResourceNotFoundError -> 404, etc.) but aren't wired in — routes currently
     # raise HTTPException directly instead. Uncomment to switch over:

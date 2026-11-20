@@ -21,3 +21,12 @@ async def access_denied_handler(request: Request, exc: AccessDeniedError):
 async def generic_handler(request: Request, exc: Exception):
     """Catch-all for any unhandled exception — returns 500 with the error message."""
     return JSONResponse(status_code=500, content={"error": {"code": 500, "message": str(exc)}})
+
+
+async def stay_unavailable_handler(request: Request, exc: Exception):
+    """Maps StayUnavailableError to 409 Conflict.
+
+    The body uses the same {"detail": ...} shape as HTTPException, which the
+    routes raise for every other error today.
+    """
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
