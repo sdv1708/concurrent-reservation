@@ -161,3 +161,11 @@ def test_mismatch_is_reported_and_not_changed(db, room_type):
     assert checks[_day(12)].verdict == "mismatch"
     assert apply_fixes(db, list(checks.values())) == 0
     assert _counts(db, room_type, _day(12)) == (0, 2)
+
+
+def test_one_snapshot_setting_is_a_no_op_on_sqlite(db, room_type):
+    from scripts.fix_check_out_night_counts import use_one_snapshot
+
+    _old_booking(db, room_type, _day(10), _day(12), 1, BookingStatusEnum.RESERVED)
+    use_one_snapshot(db)
+    assert apply_fixes(db, list(_checks_for(db, room_type).values())) == 1

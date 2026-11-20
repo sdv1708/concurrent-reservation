@@ -29,9 +29,18 @@ A fixable row is fixed through stay_inventory.release_hold and
 release_booked on the one-night stay (date, date + 1). The script commits
 once, after all rows. It never changes a mismatch row.
 
+Consistent reads: on Postgres, the script runs in one REPEATABLE READ
+transaction. It reads every Booking and Inventory row from the same snapshot,
+so a booking that the new app confirms or cancels during the run cannot make
+the script release a legitimate count. If such a write changed a row that
+the script then tries to fix, Postgres raises a serialization error on the
+row lock. The script then rolls back every change and exits with code 1.
+Run it again.
+
 Run it when no old app version writes to the database: stop the old version,
-deploy the new version, then run this script. Old bookings are the bookings
-created before --created-before. Use the time the old version stopped.
+deploy the new version, then run this script. The new version can keep
+serving traffic. Old bookings are the bookings created before
+--created-before. Use the time the old version stopped.
 
 Usage (from the repository root):
   python -m scripts.fix_check_out_night_counts --created-before 2026-11-20T09:00:00+00:00
@@ -48,6 +57,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.models.booking import Booking
@@ -177,6 +187,23 @@ def _print_report(checks: list[RowCheck]) -> None:
           f"fixable: {totals['fixable']}  mismatch: {totals['mismatch']}")
 
 
+def use_one_snapshot(db: Session) -> None:
+    """Make every read in the session's next transaction use one snapshot.
+
+    Call it before the first query of the transaction. On Postgres it sets
+    REPEATABLE READ. A row lock on a row that another transaction changed
+    after the snapshot then raises a serialization error, so the script can
+    never act on counts that it did not read. SQLite runs every transaction
+    as SERIALIZABLE already, so the function does nothing there.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+
+
+def is_serialization_failure(exc: DBAPIError) -> bool:
+    return getattr(exc.orig, "pgcode", None) == "40001"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--created-before", required=True, type=datetime.fromisoformat,
@@ -189,13 +216,23 @@ def main(argv: list[str] | None = None) -> int:
     from app.database import SessionLocal
 
     with SessionLocal() as db:
+        use_one_snapshot(db)
         checks = check_rows(db, args.created_before)
         _print_report(checks)
         if not args.apply:
+            db.rollback()
             print("\nDry run. Nothing changed. Add --apply to fix the fixable rows.")
             return 0
-        fixed = apply_fixes(db, checks)
-        db.commit()
+        try:
+            fixed = apply_fixes(db, checks)
+            db.commit()
+        except DBAPIError as exc:
+            db.rollback()
+            if not is_serialization_failure(exc):
+                raise
+            print("\nA booking changed a checked row during the run. "
+                  "Nothing changed. Run the script again.")
+            return 1
         print(f"\nFixed {fixed} rows and committed.")
     return 0
 

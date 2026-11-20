@@ -101,7 +101,11 @@ Stripe can deliver `checkout.session.completed` more than once. `confirm_booking
 
 ### What the tests prove about concurrency
 
-SQLite does not support `FOR UPDATE`, and SQLAlchemy leaves it out of the SQL on SQLite. So the SQLite test suite proves the counting rules, not the locking. One opt-in test, [test_stay_inventory_postgres.py](tests/test_stay_inventory_postgres.py), runs two threads with separate sessions against a real Postgres. Both threads try to hold the last room for the same stay, and the test checks that exactly one succeeds. The test is skipped when `TEST_DATABASE_URL` is not set. See [Tests](#tests).
+SQLite does not support `FOR UPDATE`, and SQLAlchemy leaves it out of the SQL on SQLite. So the SQLite test suite proves the counting rules, not the locking. Two opt-in tests in [test_stay_inventory_postgres.py](tests/test_stay_inventory_postgres.py) run against a real Postgres:
+- Two threads with separate sessions try to hold the last room for the same stay. The test checks that exactly one succeeds.
+- A booking confirms while the data fix script runs. The test checks that the script changes nothing and that a second run fixes only the old extra count.
+
+Both tests are skipped when `TEST_DATABASE_URL` is not set. See [Tests](#tests).
 
 ## Booking lifecycle
 
@@ -173,7 +177,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q
 ```
 
-The suite has 44 tests. 43 run on SQLite (`./test.db`), and the Postgres test is skipped without a Postgres URL:
+The suite has 46 tests. 44 run on SQLite (`./test.db`), and the 2 Postgres tests are skipped without a Postgres URL:
 
 | File | Covers |
 | --- | --- |
@@ -181,7 +185,7 @@ The suite has 44 tests. 43 run on SQLite (`./test.db`), and the Postgres test is
 | `test_phase11_bookings.py` | HTTP booking flow: 409 for an unavailable stay, a repeated webhook, input validation, guest ownership |
 | `test_phase6_hotels.py`, `test_phase8_inventory.py`, `test_phase5_users.py` | Hotel admin, search route, inventory admin, users and guests |
 | `test_fix_check_out_night_counts.py` | The one-off data fix script |
-| `test_stay_inventory_postgres.py` | Concurrent holds on a real Postgres. Opt-in. |
+| `test_stay_inventory_postgres.py` | Concurrent holds, and a booking that changes during the data fix, on a real Postgres. Opt-in. |
 
 To run the Postgres test, point `TEST_DATABASE_URL` at a database that the test can write to. The test creates the tables if needed and deletes its own rows:
 
@@ -229,6 +233,8 @@ venv\Scripts\python -m scripts.fix_check_out_night_counts --created-before 2026-
 
 The script compares each check-out row with the counts that the bookings call for under the new rule. It changes a row only when the extra count matches the old bookings exactly. It reports every other difference and does not change it. A second run changes nothing.
 
+The new version can keep serving traffic while the script runs. On Postgres, the script reads every row from one REPEATABLE READ snapshot. If a booking changes a row that the script then tries to fix, Postgres raises a serialization error. The script then rolls back every change and exits with code 1, and you run it again.
+
 ## Known limitations
 
 These are open on purpose. Each one is a separate piece of work.
@@ -241,7 +247,7 @@ These are open on purpose. Each one is a separate piece of work.
 - **Search shows the raw price.** The search price is the raw `price`, and the booking total is the dynamic price.
 - **Auth gaps.** There is no token revocation, the refresh cookie has no `Secure` flag, and no route grants `HOTEL_MANAGER`.
 - **Most services depend on FastAPI.** They raise `HTTPException`. Only `stay_inventory.py` is free of FastAPI.
-- **The concurrency test was not run.** It needs a Postgres database, and no Postgres server was available when the test was written.
+- **The Postgres tests were not run.** They need a Postgres database, and no Postgres server was available when they were written.
 
 ## Design questions and answers
 
