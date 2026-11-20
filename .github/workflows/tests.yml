@@ -1,0 +1,63 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # A real Postgres, so that the tests marked "postgres" run. SQLite leaves
+    # out SELECT ... FOR UPDATE, so only these tests prove the row locking.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: reservation_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # app.config needs these to import. The app engine never connects in
+      # the tests: the SQLite tests replace get_db, and the Postgres tests
+      # make their own engine from TEST_DATABASE_URL.
+      DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
+      JWT_SECRET_KEY: ci-only-secret-key-at-least-32-characters
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reservation_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run all tests (SQLite and Postgres)
+        # -rs lists skipped tests. With TEST_DATABASE_URL set, nothing must skip.
+        run: python -m pytest -q -rs
+
+      - name: Fail if a Postgres test was skipped
+        shell: bash  # runs with -eo pipefail, so a pytest failure is not hidden by tee
+        run: |
+          python -m pytest -q -m postgres -rs | tee postgres.log
+          if grep -q "skipped" postgres.log; then
+            echo "A Postgres test was skipped. Check TEST_DATABASE_URL."
+            exit 1
+          fi

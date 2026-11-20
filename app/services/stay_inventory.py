@@ -118,14 +118,14 @@ def _available_expr():
     return Inventory.total_count - Inventory.book_count - Inventory.reserved_count
 
 
-def _lock_rows(db: Session, room_type_id: int, first_night: date, end: date) -> list[Inventory]:
-    """Lock and return the rows of the room type on nights first_night <= night < end.
+def _lock_statement(room_type_id: int, first_night: date, end: date):
+    """The SELECT ... ORDER BY date FOR UPDATE that every count change runs first.
 
     ORDER BY date makes every caller lock rows in the same order.
     SQLAlchemy leaves FOR UPDATE out on SQLite, which locks the whole
     database file on write instead.
     """
-    return list(db.execute(
+    return (
         select(Inventory)
         .where(
             Inventory.room_id == room_type_id,
@@ -134,7 +134,12 @@ def _lock_rows(db: Session, room_type_id: int, first_night: date, end: date) -> 
         )
         .order_by(Inventory.date)
         .with_for_update()
-    ).scalars().all())
+    )
+
+
+def _lock_rows(db: Session, room_type_id: int, first_night: date, end: date) -> list[Inventory]:
+    """Lock and return the rows of the room type on nights first_night <= night < end."""
+    return list(db.execute(_lock_statement(room_type_id, first_night, end)).scalars().all())
 
 
 def _lock_stay(db: Session, room_type_id: int, stay: Stay) -> list[Inventory]:

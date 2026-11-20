@@ -105,7 +105,7 @@ SQLite does not support `FOR UPDATE`, and SQLAlchemy leaves it out of the SQL on
 - Two threads with separate sessions try to hold the last room for the same stay. The test checks that exactly one succeeds.
 - A booking confirms while the data fix script runs. The test checks that the script changes nothing and that a second run fixes only the old extra count.
 
-Both tests are skipped when `TEST_DATABASE_URL` is not set. See [Tests](#tests).
+Both tests are skipped when `TEST_DATABASE_URL` is not set. CI sets it, so they run on every pull request. A normal test also compiles the lock query for Postgres and checks that it ends with `ORDER BY "Inventory".date FOR UPDATE`. That test catches a removed lock or a removed order, but it does not prove how Postgres behaves. See [Tests](#tests).
 
 ## Booking lifecycle
 
@@ -177,7 +177,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q
 ```
 
-The suite has 46 tests. 44 run on SQLite (`./test.db`), and the 2 Postgres tests are skipped without a Postgres URL:
+The suite has 47 tests. 45 run on SQLite (`./test.db`), and the 2 Postgres tests are skipped without a Postgres URL:
 
 | File | Covers |
 | --- | --- |
@@ -187,7 +187,13 @@ The suite has 46 tests. 44 run on SQLite (`./test.db`), and the 2 Postgres tests
 | `test_fix_check_out_night_counts.py` | The one-off data fix script |
 | `test_stay_inventory_postgres.py` | Concurrent holds, and a booking that changes during the data fix, on a real Postgres. Opt-in. |
 
-To run the Postgres test, point `TEST_DATABASE_URL` at a database that the test can write to. The test creates the tables if needed and deletes its own rows:
+### CI
+
+[.github/workflows/tests.yml](.github/workflows/tests.yml) runs the whole suite on every pull request and on every push to `main`. It starts a Postgres 16 service container and sets `TEST_DATABASE_URL`, so the Postgres tests run there. A second step fails the job if a Postgres test was skipped.
+
+### Postgres tests on your machine
+
+To run the Postgres tests locally, point `TEST_DATABASE_URL` at a database that the tests can write to. The tests create the tables if needed and delete their own rows:
 
 ```powershell
 $env:TEST_DATABASE_URL = "postgresql://user:password@localhost:5432/reservation_test"
@@ -247,7 +253,7 @@ These are open on purpose. Each one is a separate piece of work.
 - **Search shows the raw price.** The search price is the raw `price`, and the booking total is the dynamic price.
 - **Auth gaps.** There is no token revocation, the refresh cookie has no `Secure` flag, and no route grants `HOTEL_MANAGER`.
 - **Most services depend on FastAPI.** They raise `HTTPException`. Only `stay_inventory.py` is free of FastAPI.
-- **The Postgres tests were not run.** They need a Postgres database, and no Postgres server was available when they were written.
+- **The Postgres tests run in CI only.** They have not run against the Postgres version that production uses.
 
 ## Design questions and answers
 
