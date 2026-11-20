@@ -96,7 +96,8 @@ def add_guests(db: Session, booking_id: int, guest_ids: list[int], current_user:
         Booking: The updated booking reflecting the attached guests.
 
     Raises:
-        HTTPException: If the booking is not found (404), not owned by the user (403),
+        HTTPException: If the booking or a guest is not found (404), the booking
+                       or a guest is not owned by the user (403), the booking
                        has expired (400), or is not in RESERVED status (400).
     """
     booking = get_by_id(db, Booking, booking_id)
@@ -109,7 +110,14 @@ def add_guests(db: Session, booking_id: int, guest_ids: list[int], current_user:
     if booking.booking_status != BookingStatusEnum.RESERVED:
         raise HTTPException(400, f"Cannot add guests to a booking with status: {booking.booking_status}")
 
-    guests = [get_by_id(db, Guest, gid) for gid in guest_ids]
+    guests = []
+    for gid in guest_ids:
+        guest = get_by_id(db, Guest, gid)
+        if not guest:
+            raise HTTPException(404, f"Guest not found: {gid}")
+        if guest.user_id != current_user.id:
+            raise HTTPException(403, f"You do not own guest {gid}")
+        guests.append(guest)
     booking.guests = guests
     booking.booking_status = BookingStatusEnum.GUESTS_ADDED
     db.commit()

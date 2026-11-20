@@ -142,3 +142,20 @@ def test_init_booking_rejects_inactive_hotel(client, guest_headers, manager_head
 
     r = client.post("/bookings/init", headers=guest_headers, json=_init_body(active_hotel))
     assert r.status_code == 404
+
+
+def test_add_guests_checks_guest_ownership(client, guest_headers, manager_headers, active_hotel):
+    booking_id = client.post("/bookings/init", headers=guest_headers,
+                             json=_init_body(active_hotel, check_in_date=_days_from_today(50),
+                                             check_out_date=_days_from_today(51))).json()["id"]
+    own = client.post("/users/guests", headers=guest_headers, json={"name": "Own Guest"}).json()
+    other = client.post("/users/guests", headers=manager_headers, json={"name": "Other Guest"}).json()
+
+    r = client.post(f"/bookings/{booking_id}/addGuests", headers=guest_headers, json=[other["id"]])
+    assert r.status_code == 403
+    r = client.post(f"/bookings/{booking_id}/addGuests", headers=guest_headers, json=[999_999])
+    assert r.status_code == 404
+
+    r = client.post(f"/bookings/{booking_id}/addGuests", headers=guest_headers, json=[own["id"]])
+    assert r.status_code == 200
+    assert [g["id"] for g in r.json()["guests"]] == [own["id"]]
